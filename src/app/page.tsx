@@ -428,7 +428,7 @@ export default function AlarmSystemGamePage() {
                   </div>
 
                   {/* Reset Code Action */}
-                  <div className="pt-2 border-t border-white/5 flex items-center justify-between">
+                  <div className="pt-2 border-t border-white/5 flex items-center justify-start">
                     <button
                       onClick={handleResetCode}
                       className="text-[11.5px] text-neutral-400 hover:text-red-400 transition flex items-center gap-1.5 cursor-pointer"
@@ -436,15 +436,6 @@ export default function AlarmSystemGamePage() {
                     >
                       <span>🔄</span>
                       <span>Reset to Intercepted Code</span>
-                    </button>
-
-                    <button
-                      onClick={() => loadRandomChallenge(challenge?.id)}
-                      className="text-[11px] text-neutral-500 hover:text-neutral-300 transition flex items-center gap-1 cursor-pointer"
-                      title="Request a new random mission assignment"
-                    >
-                      <span>🎲</span>
-                      <span>New Assignment</span>
                     </button>
                   </div>
                 </>

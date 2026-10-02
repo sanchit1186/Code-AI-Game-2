@@ -272,18 +272,22 @@ export default function AlarmSystemGamePage() {
       />
 
       {/* 2. Top Navigation Bar (Money Heist Themed) */}
-      <header className="h-14 flex items-center justify-between px-4 sm:px-6 bg-[#0c0d11] border-b border-red-600/30 shrink-0 gap-3 sm:gap-6 z-20">
-        {/* Left: Branding & Navigation with generous spacing */}
-        <div className="flex items-center gap-3.5 shrink-0">
+      <header className="h-14 flex items-center justify-between px-3 sm:px-5 bg-[#0c0d11] border-b border-red-600/30 shrink-0 gap-2 sm:gap-4 z-20">
+        {/* Left: Branding & Navigation */}
+        <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
           <button
-            onClick={() => setShowBriefing(true)}
-            className="flex items-center justify-center w-8 h-8 rounded-lg border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] hover:border-red-500/40 text-neutral-400 hover:text-white transition-all text-xs shadow-sm cursor-pointer"
+            onClick={() => {
+              playKeyBlip();
+              setShowBriefing(true);
+            }}
+            className="flex items-center gap-1.5 px-2.5 h-8 rounded-lg border border-red-500/40 bg-red-950/40 hover:bg-red-900/50 hover:border-red-500/70 text-red-300 hover:text-white transition-all text-xs font-semibold shadow-sm cursor-pointer shrink-0"
             title="Open Mission Briefing & Directives"
           >
-            📋
+            <span>📜</span>
+            <span className="hidden md:inline font-mono text-[11px] uppercase tracking-wider">Briefing</span>
           </button>
 
-          <div className="h-5 w-px bg-white/10" />
+          <div className="h-5 w-px bg-white/10 shrink-0" />
 
           <div className="flex items-center gap-2.5">
             <span className="text-base select-none">🎭</span>
@@ -312,15 +316,15 @@ export default function AlarmSystemGamePage() {
         </div>
 
         {/* Center: Mission Target & Countdown Timer */}
-        <div className="hidden sm:flex items-center gap-3.5">
+        <div className="hidden sm:flex items-center gap-2 lg:gap-3 shrink min-w-0">
           {/* Target Defense Subroutine */}
-          <div className="flex items-center gap-2 px-3 py-1 rounded bg-[#13141a] border border-white/5 text-xs">
-            <span className="text-neutral-400 text-[11px]">TARGET:</span>
-            <span className="font-bold text-white tracking-wide truncate max-w-[180px] lg:max-w-none">
+          <div className="flex items-center gap-2 px-2.5 py-1 rounded bg-[#13141a] border border-white/5 text-xs min-w-0">
+            <span className="text-neutral-400 text-[11px] shrink-0">TARGET:</span>
+            <span className="font-bold text-white tracking-wide truncate max-w-[130px] md:max-w-[180px] xl:max-w-[260px]">
               {challenge ? challenge.title.toUpperCase() : "ASSIGNING..."}
             </span>
             <span
-              className={`text-[9.5px] px-2 py-0.5 rounded font-bold font-mono uppercase tracking-wider ${
+              className={`text-[9.5px] px-1.5 py-0.5 rounded font-bold font-mono uppercase tracking-wider shrink-0 ${
                 isPassed
                   ? "bg-emerald-950 text-emerald-400 border border-emerald-600/40"
                   : "bg-red-950 text-red-400 border border-red-800/40"
@@ -332,7 +336,7 @@ export default function AlarmSystemGamePage() {
 
           {/* Countdown Timer */}
           <div
-            className={`flex items-center gap-2 px-3 py-1 rounded border font-mono text-xs transition-colors ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded border font-mono text-xs whitespace-nowrap shrink-0 transition-colors ${
               timeLeft < 180
                 ? "bg-red-950/70 border-red-600/80 text-red-400 animate-pulse"
                 : timeLeft < 360
@@ -343,12 +347,12 @@ export default function AlarmSystemGamePage() {
           >
             <span>⏱️</span>
             <span className="font-bold text-sm tracking-widest">{formatTimer(timeLeft)}</span>
-            <span className="text-[9px] uppercase tracking-wider text-neutral-500">REMAINING</span>
+            <span className="hidden xl:inline text-[9px] uppercase tracking-wider text-neutral-500">REMAINING</span>
           </div>
 
           {/* Dynamic Yield Badge (10 pts max, decaying after 13:00) */}
           <div
-            className="flex items-center gap-1.5 px-3 py-1 rounded bg-amber-950/30 border border-amber-600/40 text-xs"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-950/30 border border-amber-600/40 text-xs whitespace-nowrap shrink-0"
             title="Dynamic Yield: 10 points max. Decays gradually after 13:00 remaining."
           >
             <span className="text-amber-400 text-[10px] font-bold">YIELD:</span>
@@ -357,7 +361,7 @@ export default function AlarmSystemGamePage() {
           </div>
 
           {/* Score Counter */}
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded bg-red-950/30 border border-red-600/30 text-xs">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-red-950/30 border border-red-600/30 text-xs whitespace-nowrap shrink-0">
             <span className="text-neutral-400 text-[11px]">SCORE:</span>
             <span className="font-bold text-white text-sm tracking-wider">{totalScore}</span>
             <span className="text-[10px] text-red-400">PTS</span>
@@ -369,7 +373,7 @@ export default function AlarmSystemGamePage() {
           {/* Audio Synthesizer Toggle */}
           <button
             onClick={handleToggleAudio}
-            className={`flex items-center justify-center w-8 h-8 rounded border transition text-xs cursor-pointer ${
+            className={`flex items-center justify-center w-8 h-8 rounded border transition text-xs cursor-pointer shrink-0 ${
               audioEnabled
                 ? "border-red-500/50 bg-red-950/50 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.3)]"
                 : "border-white/10 bg-white/5 text-neutral-400 hover:text-white"
@@ -379,24 +383,11 @@ export default function AlarmSystemGamePage() {
             {audioEnabled ? "🔊" : "🔇"}
           </button>
 
-          {/* Briefing Toggle Button */}
-          <button
-            onClick={() => {
-              playKeyBlip();
-              setShowBriefing(true);
-            }}
-            className="flex items-center gap-1.5 px-2.5 h-8 rounded border border-red-600/40 bg-red-950/30 hover:bg-red-900/40 text-red-300 text-xs font-semibold tracking-wide transition cursor-pointer"
-            title="Open Mission Briefing from The Professor"
-          >
-            <span>📜</span>
-            <span className="hidden lg:inline">Briefing</span>
-          </button>
-
           {/* Execute / Submit Button */}
           <button
             onClick={handleSubmitCode}
             disabled={isExecuting || !challenge}
-            className={`flex items-center gap-2 px-3.5 h-8 rounded font-bold text-xs uppercase tracking-wider transition-all shadow-md cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3.5 sm:px-4 h-8 rounded font-bold text-xs uppercase tracking-wider transition-all shadow-md cursor-pointer whitespace-nowrap shrink-0 ${
               isExecuting
                 ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
                 : "bg-red-600 hover:bg-red-500 active:scale-95 text-white shadow-[0_0_15px_rgba(220,38,38,0.4)]"

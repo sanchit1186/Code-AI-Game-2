@@ -144,29 +144,29 @@ export default function AlarmBriefingModal({
             </div>
           </div>
 
-          {/* Technical Diagnostics Clues */}
+          {/* Operational Protocol Standards */}
           <div className="p-3.5 rounded-lg bg-black/60 border border-red-900/30 space-y-2">
             <div className="text-xs font-bold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
-              <span>🛠️ DETECTED DEFECT TYPES IN TELEMETRY LIBRARIES</span>
+              <span>🛡️ PROTOCOL COMPLIANCE DIRECTIVES</span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] text-neutral-400">
               <div className="bg-neutral-900/80 p-2 rounded border border-white/5">
-                • NumPy axis &amp; nan-reduction
+                • Strict sequence formatting
               </div>
               <div className="bg-neutral-900/80 p-2 rounded border border-white/5">
-                • Pandas rolling &amp; transform indexing
+                • Zero tolerance for runtime tracebacks
               </div>
               <div className="bg-neutral-900/80 p-2 rounded border border-white/5">
-                • Scikit-learn data leakage
+                • Isolated sandboxed execution
               </div>
               <div className="bg-neutral-900/80 p-2 rounded border border-white/5">
-                • SVD matrix multiplication (@)
+                • Real-time telemetry verification
               </div>
               <div className="bg-neutral-900/80 p-2 rounded border border-white/5">
-                • Confusion matrix precision formula
+                • Zero external assistance or hints
               </div>
               <div className="bg-neutral-900/80 p-2 rounded border border-white/5">
-                • Regularized gradient descent updates
+                • Exact mathematical fidelity
               </div>
             </div>
           </div>

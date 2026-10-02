@@ -21,36 +21,28 @@ export const CHALLENGES: ChallengeServer[] = [
     category: "NumPy Vectorized Cleaning",
     points: 10,
     timeBonusMax: 0,
-    description: `The vault multi-channel sensor array emits irregular telemetry vectors corrupted by NaN transmission dropouts and severe spike anomalies. Standard mean/std z-scores are heavily distorted by high-magnitude spikes.
+    description: `The vault multi-channel sensor array emits irregular telemetry vectors corrupted by transmission dropouts (NaNs) and severe spike anomalies.
 
-You must implement a Robust Z-Score pipeline using NumPy:
-1. Impute all NaN values in each column with that column's nan-median.
-2. Compute the Median Absolute Deviation (MAD = median(|x - median(x)|)) for each column (avoiding division by zero with a 1e-6 epsilon).
-3. Calculate the modified Z-score using Boris Iglewicz & David Hoaglin's formula:
-   modified_z = 0.6745 * (x - median) / MAD
-4. Count the number of outlier elements where |modified_z| > 3.5, and find the maximum absolute modified z-score across the matrix.
+The subroutine is designed to clean the data and compute modified Z-scores based on Median Absolute Deviation (MAD) to identify extreme outliers:
+- Impute missing telemetry values per column using column medians.
+- Compute the modified Z-score using Boris Iglewicz & David Hoaglin's formula: modified_z = 0.6745 * (x - median) / MAD.
+- Count the number of outlier values (|modified_z| > 3.5) and report the maximum absolute score across all sensors.
 
-SECURITY AUDIT: Exactly 3 implementation bugs exist in the provided subroutine. Detect and eliminate all 3 defects to output the correct verification sequence:
+SECURITY AUDIT: Exactly 3 implementation bugs corrupt the subroutine. Diagnose and eliminate all 3 defects to output the verified sequence:
 \`DISARM_SEQ: NP-ROBUST-Z-<COUNT:02d>-<MAX_SCORE:.2f}\``,
     buggyCode: `import numpy as np
 
 def compute_robust_z_scores(raw_data: np.ndarray) -> str:
-    # BUG 1: Computing nanmedian along the wrong axis (axis=1 rows instead of axis=0 columns)
     col_medians = np.nanmedian(raw_data, axis=1)
     inds = np.where(np.isnan(raw_data))
     cleaned = raw_data.copy()
-    
-    # BUG 2: Zero imputation instead of replacing with column medians
     cleaned[inds] = 0.0
 
     medians = np.median(cleaned, axis=0)
     deviations = np.abs(cleaned - medians)
-    
-    # BUG 3: Calculating mean of deviations instead of median (MAD requires median)
     mad = np.mean(deviations, axis=0)
     mad = np.where(mad == 0, 1e-6, mad)
 
-    # Modified Z-Score: 0.6745 * (x - median) / mad
     mod_z = 0.6745 * (cleaned - medians) / mad
     outlier_count = int(np.sum(np.abs(mod_z) > 3.5))
     max_score = float(np.max(np.abs(mod_z)))
@@ -72,22 +64,16 @@ if __name__ == "__main__":
     correctCode: `import numpy as np
 
 def compute_robust_z_scores(raw_data: np.ndarray) -> str:
-    # FIX 1: Compute nanmedian along axis 0 (columns)
     col_medians = np.nanmedian(raw_data, axis=0)
     inds = np.where(np.isnan(raw_data))
     cleaned = raw_data.copy()
-    
-    # FIX 2: Replace NaNs with the respective column median
     cleaned[inds] = np.take(col_medians, inds[1])
 
     medians = np.median(cleaned, axis=0)
     deviations = np.abs(cleaned - medians)
-    
-    # FIX 3: Compute median of deviations for proper MAD
     mad = np.median(deviations, axis=0)
     mad = np.where(mad == 0, 1e-6, mad)
 
-    # Modified Z-Score: 0.6745 * (x - median) / mad
     mod_z = 0.6745 * (cleaned - medians) / mad
     outlier_count = int(np.sum(np.abs(mod_z) > 3.5))
     max_score = float(np.max(np.abs(mod_z)))
@@ -115,33 +101,27 @@ if __name__ == "__main__":
     category: "Pandas Time-Series Wrangling",
     points: 10,
     timeBonusMax: 0,
-    description: `High-frequency transactions across foreign currency vaults must be evaluated to flag suspicious rapid-liquidity routing.
+    description: `Multi-currency high-frequency transaction streams must be monitored to detect suspicious routing spikes.
 
-You must implement a 3-period grouped Volume Weighted Average Price (VWAP) calculation:
-1. Ensure the transaction DataFrame is sorted by \`['symbol', 'timestamp']\` and indices reset.
-2. Calculate price-volume product (price * volume).
-3. Compute 3-period rolling sum of price-volume and rolling sum of volume per currency symbol (min_periods=1), and divide to find rolling VWAP.
-4. Calculate percentage deviation: \`100 * |price - vwap| / vwap\`.
-5. Sum the total volume of all trades where percentage deviation exceeds 1.0%, and record the maximum percentage deviation.
+The subroutine calculates a 3-period Volume Weighted Average Price (VWAP) per currency symbol:
+- Evaluate trades chronologically per symbol.
+- Compute rolling VWAP over a 3-period window (min_periods=1).
+- Detect trades where the transaction price deviates significantly from the rolling VWAP (> 1.0% absolute deviation).
+- Sum the total volume of all flagged trades and report the maximum percentage deviation observed.
 
-SECURITY AUDIT: Exactly 3 implementation bugs exist in the provided subroutine. Detect and eliminate all 3 defects to output the correct verification sequence:
+SECURITY AUDIT: Exactly 3 implementation bugs corrupt the subroutine. Diagnose and eliminate all 3 defects to output the verified sequence:
 \`DISARM_SEQ: PD-VWAP-<FLAGGED_VOL>-<MAX_DEV:.2f}\``,
     buggyCode: `import numpy as np
 import pandas as pd
 
 def audit_rolling_vwap(df: pd.DataFrame) -> str:
-    # BUG 1: sort_values called without reassigning or resetting index
     df.sort_values(by=["symbol", "timestamp"])
     df["pv"] = df["price"] * df["volume"]
 
-    # Compute rolling values per symbol
     df["rolling_pv"] = df.groupby("symbol")["pv"].transform(lambda s: s.rolling(3, min_periods=1).sum())
     df["rolling_vol"] = df.groupby("symbol")["volume"].transform(lambda s: s.rolling(3, min_periods=1).sum())
     
-    # BUG 2: Dividing by instant volume instead of 3-period rolling volume
     df["vwap"] = df["rolling_pv"] / df["volume"]
-
-    # BUG 3: Missing absolute value and dividing by price instead of vwap
     df["pct_dev"] = ((df["price"] - df["vwap"]) / df["price"]) * 100
     
     flagged = df[df["pct_dev"] > 1.0]
@@ -164,18 +144,13 @@ if __name__ == "__main__":
 import pandas as pd
 
 def audit_rolling_vwap(df: pd.DataFrame) -> str:
-    # FIX 1: Reassign sorted DataFrame and reset index
     df = df.sort_values(by=["symbol", "timestamp"]).reset_index(drop=True)
     df["pv"] = df["price"] * df["volume"]
 
-    # Compute rolling values per symbol
     df["rolling_pv"] = df.groupby("symbol")["pv"].transform(lambda s: s.rolling(3, min_periods=1).sum())
     df["rolling_vol"] = df.groupby("symbol")["volume"].transform(lambda s: s.rolling(3, min_periods=1).sum())
     
-    # FIX 2: Divide rolling price-volume by rolling volume
     df["vwap"] = df["rolling_pv"] / df["rolling_vol"]
-
-    # FIX 3: Use absolute percentage difference divided by vwap
     df["pct_dev"] = (np.abs(df["price"] - df["vwap"]) / df["vwap"]) * 100
     
     flagged = df[df["pct_dev"] > 1.0]
@@ -203,16 +178,16 @@ if __name__ == "__main__":
     category: "Scikit-Learn Classification",
     points: 10,
     timeBonusMax: 0,
-    description: `A network packet classifier models security threats using Logistic Regression. To ensure robust inference without training contamination, feature scaling must be properly decoupled between training and test sets.
+    description: `Network packet telemetry is evaluated using a Logistic Regression classifier to differentiate normal traffic from intrusion attempts.
 
-You must calibrate the classification pipeline:
-1. Fit \`StandardScaler\` on training features only, and transform test features without refitting.
-2. Train \`LogisticRegression(C=1.0, solver="liblinear", random_state=42)\`.
-3. Compute the true ROC-AUC score on the test set using calibrated predicted probabilities \`predict_proba()[:, 1]\`.
-4. Apply a classification threshold of 0.55 (\`probs >= 0.55\`) to determine predictions and count correctly identified test samples.
+The subroutine trains and evaluates the classifier:
+- Standardize features across train and test sets.
+- Train the logistic regression model on labeled packet data.
+- Compute the ROC-AUC performance metric on the test partition.
+- Apply a calibrated decision threshold of 0.55 to classify test packets and count the number of correct predictions.
 
-SECURITY AUDIT: Exactly 3 implementation bugs exist in the provided subroutine. Detect and eliminate all 3 defects to output the correct verification sequence:
-\`DISARM_SEQ: SK-LOGREG-AUC-<AUC:.2f}-ACC-<CORRECT_COUNT>\``,
+SECURITY AUDIT: Exactly 3 implementation bugs corrupt the subroutine. Diagnose and eliminate all 3 defects to output the verified sequence:
+\`DISARM_SEQ: SK-LOGREG-AUC-<AUC:.2f>-ACC-<CORRECT_COUNT>\``,
     buggyCode: `import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
@@ -221,20 +196,15 @@ from sklearn.metrics import roc_auc_score
 def evaluate_intrusion_classifier(X_train, y_train, X_test, y_test) -> str:
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
-    
-    # BUG 1: Data leakage - refitting the scaler on test data
     X_test_scaled = scaler.fit_transform(X_test)
 
     clf = LogisticRegression(C=1.0, solver="liblinear", random_state=42)
     clf.fit(X_train_scaled, y_train)
 
     probs = clf.predict_proba(X_test_scaled)[:, 1]
-    
-    # BUG 2: Passing discrete binary class labels to roc_auc_score instead of probabilities
     auc = roc_auc_score(y_test, clf.predict(X_test_scaled))
     
     threshold = 0.55
-    # BUG 3: Inverted threshold condition (< instead of >=)
     preds = (probs < threshold).astype(int)
     correct_count = int(np.sum(preds == y_test))
 
@@ -262,20 +232,15 @@ from sklearn.metrics import roc_auc_score
 def evaluate_intrusion_classifier(X_train, y_train, X_test, y_test) -> str:
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
-    
-    # FIX 1: Transform test set using the scaler fitted on training data
     X_test_scaled = scaler.transform(X_test)
 
     clf = LogisticRegression(C=1.0, solver="liblinear", random_state=42)
     clf.fit(X_train_scaled, y_train)
 
     probs = clf.predict_proba(X_test_scaled)[:, 1]
-    
-    # FIX 2: Pass continuous predicted probabilities to roc_auc_score
     auc = roc_auc_score(y_test, probs)
     
     threshold = 0.55
-    # FIX 3: Predict positive when probability meets or exceeds threshold
     preds = (probs >= threshold).astype(int)
     correct_count = int(np.sum(preds == y_test))
 
@@ -304,29 +269,24 @@ if __name__ == "__main__":
     category: "NumPy Matrix Algebra",
     points: 10,
     timeBonusMax: 0,
-    description: `High-dimensional biometric retinal scan feature matrices must be compressed using Singular Value Decomposition (SVD) for real-time vault authentication.
+    description: `Biometric scanner feature matrices must be compressed using Singular Value Decomposition (SVD) for rapid signature verification.
 
-You must implement a Rank-2 truncated SVD approximation:
-1. Decompose matrix A into U, S, and Vt using \`np.linalg.svd(A, full_matrices=False)\`.
-2. Construct the rank-2 approximation: \`A_approx = (U[:, :2] * S[:2]) @ Vt[:2, :]\`.
-3. Compute the Frobenius norm of the residual error: \`||A - A_approx||_F\`.
-4. Calculate the percentage of retained spectral energy: \`100 * sum(S[:2]^2) / sum(S^2)\`.
+The subroutine applies low-rank approximation:
+- Compute the SVD decomposition of the input feature matrix.
+- Reconstruct a rank-2 approximation of the matrix.
+- Measure the Frobenius norm of the residual reconstruction error.
+- Calculate the percentage of total spectral energy retained in the rank-2 subspace.
 
-SECURITY AUDIT: Exactly 3 implementation bugs exist in the provided subroutine. Detect and eliminate all 3 defects to output the correct verification sequence:
+SECURITY AUDIT: Exactly 3 implementation bugs corrupt the subroutine. Diagnose and eliminate all 3 defects to output the verified sequence:
 \`DISARM_SEQ: NP-SVD-RANK2-ERR-<FRO_NORM:.3f}-ENG-<ENERGY:.1f}\``,
     buggyCode: `import numpy as np
 
 def compress_biometric_matrix(A: np.ndarray, k: int = 2) -> str:
     U, S, Vt = np.linalg.svd(A, full_matrices=False)
-    
-    # BUG 1: Using element-wise multiplication (*) instead of matrix product (@) for Vt
     A_approx = (U[:, :k] * S[:k]) * Vt[:k, :]
 
-    # BUG 2: Subtracting reconstructed matrix from itself instead of original matrix A
     diff = A_approx - A_approx
     fro_norm = np.linalg.norm(diff, ord="fro")
-    
-    # BUG 3: Retained energy formula uses unsquared singular values instead of variances (S^2)
     retained_energy = (np.sum(S[:k]) / np.sum(S)) * 100
 
     return f"DISARM_SEQ: NP-SVD-RANK{k}-ERR-{fro_norm:.3f}-ENG-{retained_energy:.1f}"
@@ -345,15 +305,10 @@ if __name__ == "__main__":
 
 def compress_biometric_matrix(A: np.ndarray, k: int = 2) -> str:
     U, S, Vt = np.linalg.svd(A, full_matrices=False)
-    
-    # FIX 1: Use matrix multiplication (@) with Vt[:k, :]
     A_approx = (U[:, :k] * S[:k]) @ Vt[:k, :]
 
-    # FIX 2: Calculate residual difference from original matrix A
     diff = A - A_approx
     fro_norm = np.linalg.norm(diff, ord="fro")
-    
-    # FIX 3: Retained spectral energy uses squared singular values (S^2)
     retained_energy = (np.sum(S[:k] ** 2) / np.sum(S ** 2)) * 100
 
     return f"DISARM_SEQ: NP-SVD-RANK{k}-ERR-{fro_norm:.3f}-ENG-{retained_energy:.1f}"
@@ -377,27 +332,22 @@ if __name__ == "__main__":
     category: "Pandas Time Series Interpolation",
     points: 10,
     timeBonusMax: 0,
-    description: `Vault thermal sensors stream irregular timestamped telemetry with periodic transmission voids. To monitor laser corridor stabilization, data must be interpolated, downsampled to uniform 15-minute intervals, and smoothed.
+    description: `Vault thermal sensors record temperature readings asynchronously with sporadic transmission gaps.
 
-You must build a Pandas time-series pipeline:
-1. Interpolate missing values in temperature using time-weighted interpolation (\`method="time"\`).
-2. Resample the series into 15-minute fixed bins, calculating the mean of each bin.
-3. Compute the Exponential Weighted Moving Average (EWMA) with smoothing factor \`alpha=0.4\` and \`adjust=False\`.
-4. Output the final smoothed temperature reading and the maximum smoothed reading.
+The subroutine processes the time series for laser corridor stabilization:
+- Handle missing values across the irregular timestamp index.
+- Downsample the telemetry into uniform 15-minute intervals.
+- Apply Exponential Weighted Moving Average (EWMA) smoothing with alpha=0.4.
+- Report the final smoothed temperature reading and the peak smoothed value.
 
-SECURITY AUDIT: Exactly 3 implementation bugs exist in the provided subroutine. Detect and eliminate all 3 defects to output the correct verification sequence:
+SECURITY AUDIT: Exactly 3 implementation bugs corrupt the subroutine. Diagnose and eliminate all 3 defects to output the verified sequence:
 \`DISARM_SEQ: PD-EWMA-LAST-<LAST:.2f}-MAX-<MAX:.2f}\``,
     buggyCode: `import numpy as np
 import pandas as pd
 
 def process_thermal_telemetry(df: pd.DataFrame) -> str:
-    # BUG 1: Using linear interpolation instead of time-based interpolation for irregular timestamps
     df["interp"] = df["temperature"].interpolate(method="linear")
-
-    # BUG 2: Resampling with sum() instead of mean()
     resampled = df[["interp"]].resample("15min").sum()
-
-    # BUG 3: Using adjust=True which skews recursive exponential smoothing
     resampled["ewma"] = resampled["interp"].ewm(alpha=0.4, adjust=True).mean()
 
     final_ewma = float(resampled["ewma"].iloc[-1])
@@ -415,13 +365,8 @@ if __name__ == "__main__":
 import pandas as pd
 
 def process_thermal_telemetry(df: pd.DataFrame) -> str:
-    # FIX 1: Use time-weighted interpolation for irregular time indexes
     df["interp"] = df["temperature"].interpolate(method="time")
-
-    # FIX 2: Aggregate resampled 15-minute bins using mean()
     resampled = df[["interp"]].resample("15min").mean()
-
-    # FIX 3: Use adjust=False for recursive exponential smoothing
     resampled["ewma"] = resampled["interp"].ewm(alpha=0.4, adjust=False).mean()
 
     final_ewma = float(resampled["ewma"].iloc[-1])
@@ -444,32 +389,26 @@ if __name__ == "__main__":
     category: "Scikit-Learn NLP Feature Extraction",
     points: 10,
     timeBonusMax: 0,
-    description: `Incoming alarm override tokens are compared against known incident security logs to classify incident severity using Natural Language Processing.
+    description: `Incoming access tokens must be cross-referenced against security incident archives using Natural Language Processing.
 
-You must build an NLP similarity matcher using Scikit-Learn:
-1. Initialize \`TfidfVectorizer(ngram_range=(1, 2), stop_words="english", sublinear_tf=True)\` to extract unigrams and bigrams with sublinear frequency scaling.
-2. Fit the vectorizer on the combined documents and query (or transform query using the fitted document vectorizer).
-3. Compute cosine similarities between the query vector and all document vectors.
-4. Identify the index of the highest similarity document and report its similarity score.
+The subroutine matches access tokens using TF-IDF representation:
+- Extract sublinear TF-IDF feature vectors capturing unigram and bigram token sequences while ignoring standard English stop words.
+- Compute cosine similarities between the probe query and all archived incident logs.
+- Identify the index of the most semantically relevant incident and report its similarity coefficient.
 
-SECURITY AUDIT: Exactly 3 implementation bugs exist in the provided subroutine. Detect and eliminate all 3 defects to output the correct verification sequence:
+SECURITY AUDIT: Exactly 3 implementation bugs corrupt the subroutine. Diagnose and eliminate all 3 defects to output the verified sequence:
 \`DISARM_SEQ: SK-TFIDF-MATCH-DOC<INDEX>-SIM-<SIMILARITY:.3f}\``,
     buggyCode: `import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 def find_most_similar_incident(documents: list, query: str) -> str:
-    # BUG 1: ngram_range=(2, 2) excludes critical unigram security keywords
     vectorizer = TfidfVectorizer(ngram_range=(2, 2), stop_words="english", sublinear_tf=True)
     doc_vectors = vectorizer.fit_transform(documents)
 
-    # BUG 2: Separate vectorizer instance for query creates mismatched vocabulary dimensions
     query_vector = TfidfVectorizer().fit_transform([query])
-    
-    # Matching requires identical vocabulary representation
     similarities = cosine_similarity(query_vector, doc_vectors)[0]
     
-    # BUG 3: argmin finds the lowest similarity match instead of highest match
     best_idx = int(np.argmin(similarities))
     best_sim = float(similarities[best_idx])
 
@@ -491,18 +430,14 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 def find_most_similar_incident(documents: list, query: str) -> str:
-    # FIX 1: Include unigrams and bigrams (1, 2)
     vectorizer = TfidfVectorizer(ngram_range=(1, 2), stop_words="english", sublinear_tf=True)
     all_texts = documents + [query]
     tfidf_matrix = vectorizer.fit_transform(all_texts)
 
-    # FIX 2: Extract query and document vectors from the shared vocabulary matrix
     doc_vectors = tfidf_matrix[:-1]
     query_vector = tfidf_matrix[-1:]
     
     similarities = cosine_similarity(query_vector, doc_vectors)[0]
-    
-    # FIX 3: argmax selects the highest similarity document
     best_idx = int(np.argmax(similarities))
     best_sim = float(similarities[best_idx])
 
@@ -528,28 +463,23 @@ if __name__ == "__main__":
     category: "Scikit-Learn Unsupervised Clustering",
     points: 10,
     timeBonusMax: 0,
-    description: `Patrol drones monitoring the central reserve transmit geographic coordinate vectors. To neutralize tracking antennas, clusters must be partitioned into 3 distinct operational patrol sectors and validated with Silhouette scoring.
+    description: `Drone patrol coordinates must be grouped into distinct operational sectors and validated for cluster cohesion.
 
-You must configure the clustering engine:
-1. Initialize \`KMeans(n_clusters=3, random_state=42, n_init=10)\`.
-2. Fit the model and compute cluster labels on coordinate matrix X.
-3. Compute the overall Silhouette coefficient of the clustering: \`silhouette_score(X, labels)\`.
-4. Extract the final model inertia (within-cluster sum of squares).
+The subroutine clusters patrol waypoints:
+- Partition coordinate vectors into 3 spatial sectors using K-Means with random_state=42.
+- Compute the Silhouette coefficient to evaluate cluster separation.
+- Record the final clustering inertia.
 
-SECURITY AUDIT: Exactly 3 implementation bugs exist in the provided subroutine. Detect and eliminate all 3 defects to output the correct verification sequence:
+SECURITY AUDIT: Exactly 3 implementation bugs corrupt the subroutine. Diagnose and eliminate all 3 defects to output the verified sequence:
 \`DISARM_SEQ: SK-KMEANS-SIL-<SCORE:.3f}-INERTIA-<INERTIA:.1f}\``,
     buggyCode: `import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 
 def optimize_drone_sectors(X: np.ndarray) -> str:
-    # BUG 1: Configured for 2 clusters instead of the required 3 sectors
     kmeans = KMeans(n_clusters=2, random_state=42, n_init=10)
-    
-    # BUG 2: Reading labels_ attribute without fitting model (throws AttributeError)
     labels = kmeans.labels_
 
-    # BUG 3: Transposed coordinates matrix passed to silhouette_score
     score = silhouette_score(X.T, labels)
     inertia = float(kmeans.inertia_)
 
@@ -567,13 +497,9 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 
 def optimize_drone_sectors(X: np.ndarray) -> str:
-    # FIX 1: Specify n_clusters=3
     kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
-    
-    # FIX 2: Fit model and generate cluster assignment labels
     labels = kmeans.fit_predict(X)
 
-    # FIX 3: Pass untransposed coordinate samples matrix X
     score = silhouette_score(X, labels)
     inertia = float(kmeans.inertia_)
 
@@ -595,20 +521,19 @@ if __name__ == "__main__":
     category: "Pandas Hierarchical Pivoting",
     points: 10,
     timeBonusMax: 0,
-    description: `Distributed firewall nodes record multi-severity intrusion events across infrastructure tiers. To pinpoint the most compromised datacenter, data must be aggregated via a MultiIndex pivot table and weighted threat scoring.
+    description: `Multi-datacenter firewall logs record irregular intrusion attempts across infrastructure tiers.
 
-You must build a Pandas aggregation pipeline:
-1. Construct a pivot table with \`index=['datacenter', 'tier']\`, \`columns='severity'\`, \`values='events'\`, and \`aggfunc='sum'\` (filling missing cells with 0).
-2. Sum event counts per datacenter by grouping at index level 0 (\`level=0\`).
-3. Compute the composite threat weight: \`CRITICAL * 3.0 + HIGH * 1.5\`.
-4. Identify the datacenter with the maximum threat weight and report its score.
+The subroutine aggregates incident logs into an operational threat matrix:
+- Pivot event counts across datacenter and tier hierarchical levels.
+- Aggregate total incidents per datacenter across all tiers.
+- Calculate a composite threat score where CRITICAL events are weighted at 3.0 and HIGH events at 1.5.
+- Identify the datacenter presenting the highest threat score.
 
-SECURITY AUDIT: Exactly 3 implementation bugs exist in the provided subroutine. Detect and eliminate all 3 defects to output the correct verification sequence:
+SECURITY AUDIT: Exactly 3 implementation bugs corrupt the subroutine. Diagnose and eliminate all 3 defects to output the verified sequence:
 \`DISARM_SEQ: PD-PIVOT-TOP-<DATACENTER>-SCORE-<WEIGHT:.1f}\``,
     buggyCode: `import pandas as pd
 
 def compute_datacenter_threats(df: pd.DataFrame) -> str:
-    # BUG 1: Default aggfunc="mean" instead of "sum" alters total incident counts
     pivot = pd.pivot_table(
         df,
         values="events",
@@ -617,12 +542,10 @@ def compute_datacenter_threats(df: pd.DataFrame) -> str:
         fill_value=0,
     )
 
-    # BUG 2: Grouping by level=1 (tier) instead of level=0 (datacenter)
     dc_summary = pivot.groupby(level=1).sum()
     crit = dc_summary["CRITICAL"] if "CRITICAL" in dc_summary else 0
     high = dc_summary["HIGH"] if "HIGH" in dc_summary else 0
     
-    # BUG 3: Inverted multiplier coefficients (1.5 for CRITICAL and 3.0 for HIGH)
     dc_summary["threat_weight"] = crit * 1.5 + high * 3.0
     top_dc = str(dc_summary["threat_weight"].idxmax())
     max_weight = float(dc_summary["threat_weight"].max())
@@ -646,7 +569,6 @@ if __name__ == "__main__":
     correctCode: `import pandas as pd
 
 def compute_datacenter_threats(df: pd.DataFrame) -> str:
-    # FIX 1: Explicitly specify aggfunc="sum"
     pivot = pd.pivot_table(
         df,
         values="events",
@@ -656,12 +578,10 @@ def compute_datacenter_threats(df: pd.DataFrame) -> str:
         fill_value=0,
     )
 
-    # FIX 2: Group by level=0 to aggregate across datacenters
     dc_summary = pivot.groupby(level=0).sum()
     crit = dc_summary["CRITICAL"] if "CRITICAL" in dc_summary else 0
     high = dc_summary["HIGH"] if "HIGH" in dc_summary else 0
     
-    # FIX 3: Weight CRITICAL * 3.0 and HIGH * 1.5
     dc_summary["threat_weight"] = crit * 3.0 + high * 1.5
     top_dc = str(dc_summary["threat_weight"].idxmax())
     max_weight = float(dc_summary["threat_weight"].max())
@@ -691,16 +611,14 @@ if __name__ == "__main__":
     category: "NumPy Vectorized Optimization",
     points: 10,
     timeBonusMax: 0,
-    description: `A hardware sensor calibrator fits linear regression weights using vectorized batch gradient descent with L2 Ridge Regularization.
+    description: `A sensor calibration unit optimizes linear model parameters using batch gradient descent with Ridge (L2) regularization.
 
-You must optimize the regression model over 100 epochs:
-1. Matrix-vector prediction: \`preds = X @ w\`.
-2. Compute residual error: \`error = preds - y\`.
-3. Compute vectorized Ridge gradient: \`grad = (1 / m) * (X.T @ error) + (lambda_reg / m) * w\`.
-4. Perform gradient descent step: \`w -= lr * grad\` (\`lr=0.05\`, \`lambda_reg=0.1\`).
-5. Compute total regularized loss: \`loss = (1 / (2*m)) * ||X@w - y||^2 + (lambda_reg / (2*m)) * ||w||^2\` and L2 norm of weights \`||w||\`.
+The subroutine performs parameter optimization:
+- Train weights over 100 epochs using learning rate 0.05 and regularization parameter lambda=0.1.
+- Update weights using the regularized analytical gradient.
+- Calculate the final total regularized mean-squared loss and the L2 Euclidean norm of the weight vector.
 
-SECURITY AUDIT: Exactly 3 implementation bugs exist in the provided subroutine. Detect and eliminate all 3 defects to output the correct verification sequence:
+SECURITY AUDIT: Exactly 3 implementation bugs corrupt the subroutine. Diagnose and eliminate all 3 defects to output the verified sequence:
 \`DISARM_SEQ: NP-RIDGE-LOSS-<LOSS:.3f}-WNORM-<NORM:.2f}\``,
     buggyCode: `import numpy as np
 
@@ -713,12 +631,7 @@ def train_ridge_regression(X: np.ndarray, y: np.ndarray, epochs: int = 100) -> s
     for _ in range(epochs):
         preds = X @ w
         error = preds - y
-        
-        # BUG 1: Missing transpose on X causes matrix dimension incompatibility
-        # BUG 2: Omitting the Ridge L2 weight penalty in the gradient calculation
         grad = (1 / m) * (X @ error)
-        
-        # BUG 3: Gradient ascent step (+ instead of -) causes divergence
         w += lr * grad
 
     final_loss = (1 / (2 * m)) * np.sum((X @ w - y) ** 2) + (lambda_reg / (2 * m)) * np.sum(w ** 2)
@@ -745,11 +658,7 @@ def train_ridge_regression(X: np.ndarray, y: np.ndarray, epochs: int = 100) -> s
     for _ in range(epochs):
         preds = X @ w
         error = preds - y
-        
-        # FIX 1 & 2: Correct matrix multiplication (X.T @ error) and include Ridge penalty
         grad = (1 / m) * (X.T @ error) + (lambda_reg / m) * w
-        
-        # FIX 3: Gradient descent step subtracts gradient
         w -= lr * grad
 
     final_loss = (1 / (2 * m)) * np.sum((X @ w - y) ** 2) + (lambda_reg / (2 * m)) * np.sum(w ** 2)
@@ -774,29 +683,24 @@ if __name__ == "__main__":
     category: "Scikit-Learn Evaluation Metrics",
     points: 10,
     timeBonusMax: 0,
-    description: `A 3-class alarm classifier categorizes intrusion telemetry into [0: Low, 1: Medium, 2: High]. Because the distribution across classes is imbalanced, evaluation requires computing Macro-averaged F1 and per-class precision metrics.
+    description: `A multi-class security alert model categorizes incoming system events into 3 severity levels (0: Low, 1: Medium, 2: High).
 
-You must evaluate classifier predictions:
-1. Generate the 3x3 confusion matrix: \`confusion_matrix(y_true, y_pred, labels=[0, 1, 2])\`.
-2. Compute the Macro-averaged F1 score: \`f1_score(y_true, y_pred, average="macro")\`.
-3. Compute class 0 precision from the confusion matrix: \`TP / (TP + FP)\`, where False Positives for class 0 are the sum of column 0 minus TP.
+The subroutine evaluates model classification performance on imbalanced telemetry:
+- Generate the confusion matrix across all 3 classes.
+- Calculate the unweighted macro-averaged F1 score.
+- Compute the precision metric specifically for Class 0.
 
-SECURITY AUDIT: Exactly 3 implementation bugs exist in the provided subroutine. Detect and eliminate all 3 defects to output the correct verification sequence:
+SECURITY AUDIT: Exactly 3 implementation bugs corrupt the subroutine. Diagnose and eliminate all 3 defects to output the verified sequence:
 \`DISARM_SEQ: SK-METRICS-MACROF1-<F1:.3f}-PREC0-<PREC:.2f}\``,
     buggyCode: `import numpy as np
 from sklearn.metrics import confusion_matrix, f1_score
 
 def evaluate_alarm_predictions(y_true: np.ndarray, y_pred: np.ndarray) -> str:
     cm = confusion_matrix(y_true, y_pred, labels=[0, 1, 2])
-    
-    # BUG 1: average="micro" used instead of average="macro"
     f1_val = f1_score(y_true, y_pred, average="micro")
 
     tp_0 = cm[0, 0]
-    # BUG 2: Summing row 0 instead of column 0 gives False Negatives rather than False Positives
     fp_0 = np.sum(cm[0, :]) - tp_0
-    
-    # BUG 3: Dividing tp_0 by fp_0 instead of (tp_0 + fp_0)
     prec_0 = float(tp_0 / fp_0) if fp_0 > 0 else 0.0
 
     return f"DISARM_SEQ: SK-METRICS-MACROF1-{f1_val:.3f}-PREC0-{prec_0:.2f}"
@@ -811,15 +715,10 @@ from sklearn.metrics import confusion_matrix, f1_score
 
 def evaluate_alarm_predictions(y_true: np.ndarray, y_pred: np.ndarray) -> str:
     cm = confusion_matrix(y_true, y_pred, labels=[0, 1, 2])
-    
-    # FIX 1: Compute unweighted macro-averaged F1 score
     f1_val = f1_score(y_true, y_pred, average="macro")
 
     tp_0 = cm[0, 0]
-    # FIX 2: Sum column 0 minus TP to get False Positives for class 0
     fp_0 = np.sum(cm[:, 0]) - tp_0
-    
-    # FIX 3: Precision denominator is TP + FP
     prec_0 = float(tp_0 / (tp_0 + fp_0)) if (tp_0 + fp_0) > 0 else 0.0
 
     return f"DISARM_SEQ: SK-METRICS-MACROF1-{f1_val:.3f}-PREC0-{prec_0:.2f}"

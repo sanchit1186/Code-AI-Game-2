@@ -58,7 +58,12 @@ export async function runPythonCode(
   try {
     await fs.writeFile(tempFile, sourceCode, "utf-8");
 
-    const pythonCmd = process.platform === "win32" ? "python" : "python3";
+    const candidates =
+      process.platform === "win32"
+        ? [process.env.PYTHON_BIN, "python", "py", "python3"].filter(Boolean) as string[]
+        : [process.env.PYTHON_BIN, "python3", "python"].filter(Boolean) as string[];
+
+    const pythonCmd = candidates[0];
 
     return await new Promise<PythonRunResult>((resolve) => {
       let isSettled = false;
@@ -109,13 +114,16 @@ export async function runPythonCode(
         child.stdin.end();
       }
 
-      child.on("error", (err: Error) => {
+      child.on("error", (err: Error & { code?: string }) => {
         if (!isSettled) {
           isSettled = true;
           clearTimeout(timer);
+          const isMissing = err.code === "ENOENT" || err.message.includes("ENOENT");
           resolve({
             stdout,
-            stderr: `Execution error: ${err.message}`,
+            stderr: isMissing
+              ? `Python environment not detected on this server instance (${pythonCmd} not found). Running via client-side WebAssembly (Pyodide) is recommended.`
+              : `Execution error: ${err.message}`,
             exitCode: 1,
             timeMs: Date.now() - startTime,
           });

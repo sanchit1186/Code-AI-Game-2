@@ -104,7 +104,7 @@ export default function AlarmBriefingModal({
             <div className="p-4 rounded-lg bg-neutral-900/90 border border-red-500/40 space-y-2.5 shadow-sm">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <span className="text-[10px] font-mono tracking-widest text-red-400 bg-red-950/70 px-2 py-0.5 rounded border border-red-700/50 uppercase">
-                  ASSIGNED TARGET // SUBROUTINE {challenge.stageNumber} // {challenge.category}
+                  ASSIGNED TARGET {"//"} SUBROUTINE {challenge.stageNumber} {"//"} {challenge.category}
                 </span>
                 <span className="text-[10px] text-amber-300 font-bold bg-amber-950/50 px-2 py-0.5 rounded border border-amber-600/40">
                   {challenge.points} PTS
@@ -126,20 +126,20 @@ export default function AlarmBriefingModal({
                 <span>🎯 MISSION OBJECTIVE</span>
               </div>
               <ul className="list-disc list-inside text-neutral-400 text-xs space-y-1">
-                <li>Debug your assigned corrupted Python script.</li>
-                <li>Identify the root logic flaw on your own — no hints provided.</li>
+                <li>Debug your assigned Python script (NumPy, Pandas, Scikit-Learn).</li>
+                <li><strong className="text-red-300">Exactly 3 implementation bugs</strong> exist in each subroutine.</li>
                 <li>Output format must strictly match: <code className="text-red-300">DISARM_SEQ: &lt;KEY&gt;</code>.</li>
               </ul>
             </div>
 
             <div className="p-3.5 rounded-lg bg-neutral-900/60 border border-white/5 space-y-1.5">
               <div className="text-amber-400 font-bold text-xs uppercase flex items-center gap-1.5">
-                <span>⚡ SCORING &amp; SPEED BONUSES</span>
+                <span>⚡ SCORING &amp; TIME DECAY</span>
               </div>
               <ul className="list-disc list-inside text-neutral-400 text-xs space-y-1">
-                <li><strong className="text-white">100 Base Points</strong> for a verified disarm sequence.</li>
-                <li><strong className="text-amber-300">Up to 50 Speed Bonus Points</strong> for fast bypass.</li>
-                <li>Total available: <strong className="text-red-400">150 Max Points</strong>.</li>
+                <li><strong className="text-white">10 Maximum Points</strong> if neutralized in the first 2 minutes.</li>
+                <li>After 13 minutes remaining, score <strong className="text-amber-300">gradually decays</strong> from 9 down to 1 point.</li>
+                <li>Total lockdown timer: <strong className="text-red-400">15 Minutes (900s)</strong>.</li>
               </ul>
             </div>
           </div>
@@ -147,26 +147,26 @@ export default function AlarmBriefingModal({
           {/* Technical Diagnostics Clues */}
           <div className="p-3.5 rounded-lg bg-black/60 border border-red-900/30 space-y-2">
             <div className="text-xs font-bold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
-              <span>🛠️ DETECTED ANOMALIES IN INTERCEPTED CODE</span>
+              <span>🛠️ DETECTED DEFECT TYPES IN TELEMETRY LIBRARIES</span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] text-neutral-400">
               <div className="bg-neutral-900/80 p-2 rounded border border-white/5">
-                • Off-by-one loop bounds
+                • NumPy axis &amp; nan-reduction
               </div>
               <div className="bg-neutral-900/80 p-2 rounded border border-white/5">
-                • Mutable default arguments
+                • Pandas rolling &amp; transform indexing
               </div>
               <div className="bg-neutral-900/80 p-2 rounded border border-white/5">
-                • Late-binding lambda closures
+                • Scikit-learn data leakage
               </div>
               <div className="bg-neutral-900/80 p-2 rounded border border-white/5">
-                • Bitwise operator precedence
+                • SVD matrix multiplication (@)
               </div>
               <div className="bg-neutral-900/80 p-2 rounded border border-white/5">
-                • Dict mutation during iteration
+                • Confusion matrix precision formula
               </div>
               <div className="bg-neutral-900/80 p-2 rounded border border-white/5">
-                • Matrix coordinate indexing
+                • Regularized gradient descent updates
               </div>
             </div>
           </div>

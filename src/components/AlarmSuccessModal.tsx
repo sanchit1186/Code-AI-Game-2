@@ -20,7 +20,6 @@ export default function AlarmSuccessModal({
   challenge,
   timeSpentSeconds,
   scoreAwarded,
-  bonusAwarded,
   totalScore,
   emittedOutput,
   onContinueToNext,
@@ -118,7 +117,7 @@ export default function AlarmSuccessModal({
                 +{totalScore} <span className="text-xs text-neutral-400">PTS</span>
               </div>
               <div className="text-[10px] text-neutral-500 font-mono">
-                {scoreAwarded} Base + {bonusAwarded} Speed
+                {scoreAwarded} / 10 Max Points (decayed with time)
               </div>
             </div>
 
@@ -144,7 +143,7 @@ export default function AlarmSuccessModal({
                 {challenge.title}
               </div>
               <div className="text-[10px] text-red-400 uppercase tracking-wider font-semibold">
-                SUBROUTINE {challenge.stageNumber} // {challenge.category}
+                SUBROUTINE {challenge.stageNumber} {"//"} {challenge.category}
               </div>
             </div>
           </div>

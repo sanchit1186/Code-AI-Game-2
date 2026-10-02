@@ -10,6 +10,7 @@ import {
   playErrorSound,
   toggleSirenDrone,
 } from "@/lib/alarmAudio";
+import { preloadPyodide, runPythonInBrowser } from "@/lib/client/pyodideRunner";
 import type { ChallengeClient } from "@/lib/server/challenges";
 
 interface EvaluateResponse {
@@ -76,9 +77,35 @@ export default function AlarmSystemGamePage() {
     }
   }, []);
 
+  // Load initial challenge
   useEffect(() => {
-    loadRandomChallenge();
-  }, [loadRandomChallenge]);
+    let ignore = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/game/challenges");
+        if (res.ok) {
+          const data = await res.json();
+          if (!ignore && data.challenge) {
+            setChallenge(data.challenge);
+            setUserCode(data.challenge.buggyCode);
+            setIsPassed(false);
+            setEvalResult(null);
+            setTimeLeft(900);
+            setTimerRunning(false);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load random challenge:", err);
+      } finally {
+        if (!ignore) {
+          setLoadingChallenge(false);
+        }
+      }
+    })();
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   // Continue to Next Game flow:
   // Resets game state, fetches a distinct new random challenge, and returns to initial Briefing Screen
@@ -135,6 +162,13 @@ export default function AlarmSystemGamePage() {
     }
   };
 
+  // Preload Pyodide WebAssembly runtime for seamless execution
+  useEffect(() => {
+    preloadPyodide().catch((err) => {
+      console.warn("Pyodide background preload warning:", err);
+    });
+  }, []);
+
   // Run and Evaluate code against secure backend
   const handleSubmitCode = useCallback(async () => {
     if (!challenge || isExecuting) return;
@@ -145,6 +179,15 @@ export default function AlarmSystemGamePage() {
     const timeSpentSeconds = 900 - timeLeft;
 
     try {
+      // 1. Execute Python code via client-side WebAssembly (Pyodide) for universal zero-config execution
+      let clientRunResult = null;
+      try {
+        clientRunResult = await runPythonInBrowser(userCode, stdin);
+      } catch (browserErr) {
+        console.warn("Client Python runner unavailable, falling back to server execution:", browserErr);
+      }
+
+      // 2. Validate output and award points through secure backend endpoint
       const res = await fetch("/api/game/evaluate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -153,6 +196,7 @@ export default function AlarmSystemGamePage() {
           code: userCode,
           stdin,
           timeSpentSeconds,
+          clientRunResult,
         }),
       });
 
@@ -193,6 +237,15 @@ export default function AlarmSystemGamePage() {
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
+
+  const calculateCurrentPoints = (seconds: number) => {
+    if (seconds <= 0) return 0;
+    if (seconds >= 780) return 10;
+    const pts = 1 + Math.floor((seconds / 780) * 9);
+    return Math.min(9, Math.max(1, pts));
+  };
+
+  const currentYield = calculateCurrentPoints(timeLeft);
 
   return (
     <div className="h-screen w-screen flex flex-col bg-[#08080a] text-neutral-200 font-mono select-none overflow-hidden">
@@ -291,6 +344,16 @@ export default function AlarmSystemGamePage() {
             <span>⏱️</span>
             <span className="font-bold text-sm tracking-widest">{formatTimer(timeLeft)}</span>
             <span className="text-[9px] uppercase tracking-wider text-neutral-500">REMAINING</span>
+          </div>
+
+          {/* Dynamic Yield Badge (10 pts max, decaying after 13:00) */}
+          <div
+            className="flex items-center gap-1.5 px-3 py-1 rounded bg-amber-950/30 border border-amber-600/40 text-xs"
+            title="Dynamic Yield: 10 points max. Decays gradually after 13:00 remaining."
+          >
+            <span className="text-amber-400 text-[10px] font-bold">YIELD:</span>
+            <span className="font-bold text-amber-300 text-sm tracking-wider">{currentYield}</span>
+            <span className="text-[10px] text-neutral-400">/ 10 PTS</span>
           </div>
 
           {/* Score Counter */}
@@ -400,10 +463,10 @@ export default function AlarmSystemGamePage() {
                   <div>
                     <div className="flex items-center justify-between gap-2 mb-1.5">
                       <span className="text-[10px] font-mono tracking-widest text-red-400 bg-red-950/60 px-2 py-0.5 rounded border border-red-800/40 uppercase">
-                        SUBROUTINE {challenge.stageNumber} // {challenge.category}
+                        SUBROUTINE {challenge.stageNumber} {"//"} {challenge.category}
                       </span>
                       <span className="text-[10px] text-amber-300 font-bold bg-amber-950/40 px-2 py-0.5 rounded border border-amber-600/30">
-                        {challenge.points} PTS
+                        {currentYield} / 10 PTS
                       </span>
                     </div>
 
@@ -413,17 +476,22 @@ export default function AlarmSystemGamePage() {
                   </div>
 
                   {/* Problem Description */}
-                  <div className="p-3.5 rounded-lg bg-[#121319] border border-white/5 text-[12.5px] text-neutral-300 whitespace-pre-line leading-relaxed shadow-sm">
+                  <div className="p-3.5 rounded-lg bg-[#121319] border border-white/5 text-[12.5px] text-neutral-300 whitespace-pre-line leading-relaxed shadow-sm font-mono">
                     {challenge.description}
                   </div>
 
                   {/* Target Requirement Card */}
                   <div className="p-3 rounded-lg bg-red-950/20 border border-red-600/30 text-neutral-300 space-y-1.5">
-                    <div className="text-[11px] font-bold text-red-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <span>⚡ SEQUENCE PROTOCOL</span>
+                    <div className="text-[11px] font-bold text-red-400 uppercase tracking-wider flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <span>⚡ SECURITY AUDIT</span>
+                      </span>
+                      <span className="text-[10px] text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-600/40">
+                        EXACTLY 3 DEFECTS
+                      </span>
                     </div>
                     <p className="text-[11.5px] text-neutral-400">
-                      Produce the exact bypass string matching the required formula format. No hints are permitted. Diagnose the corrupted script and patch the flaw directly.
+                      Diagnose and fix all 3 bugs in the Python script. Time limit is 15 minutes: initial value is 10 points, decaying gradually after 13:00 remaining down to 1 point.
                     </p>
                   </div>
 

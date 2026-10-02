@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getChallengeById } from "@/lib/server/challenges";
-import { runPythonCode } from "@/lib/server/pythonRunner";
+import { runPythonCode, type PythonRunResult } from "@/lib/server/pythonRunner";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { challengeId, code, stdin = "", timeSpentSeconds = 0 } = body;
+    const {
+      challengeId,
+      code,
+      stdin = "",
+      timeSpentSeconds = 0,
+      clientRunResult,
+    } = body;
 
     if (!challengeId || typeof code !== "string") {
       return NextResponse.json(
@@ -25,7 +31,26 @@ export async function POST(req: NextRequest) {
     }
 
     // Execute the submitted Python code
-    const runResult = await runPythonCode(code, stdin);
+    // If client-side WebAssembly execution (Pyodide) already ran the code, use those results;
+    // otherwise fallback to server runner (Docker executor or host Python).
+    let runResult: PythonRunResult;
+    if (
+      clientRunResult &&
+      typeof clientRunResult.stdout === "string" &&
+      typeof clientRunResult.exitCode === "number"
+    ) {
+      runResult = {
+        stdout: clientRunResult.stdout,
+        stderr: clientRunResult.stderr ?? "",
+        exitCode: clientRunResult.exitCode,
+        timeMs:
+          typeof clientRunResult.timeMs === "number"
+            ? clientRunResult.timeMs
+            : 0,
+      };
+    } else {
+      runResult = await runPythonCode(code, stdin);
+    }
 
     // Normalize outputs for comparison (trim trailing whitespace/newlines)
     const normalizedStdout = runResult.stdout.trim();
@@ -36,13 +61,21 @@ export async function POST(req: NextRequest) {
       normalizedStdout === normalizedExpected;
 
     let scoreAwarded = 0;
-    let bonusAwarded = 0;
+    const bonusAwarded = 0;
 
     if (passed) {
-      scoreAwarded = challenge.points;
-      // Calculate speed bonus: max bonus decayed by elapsed time (minimum 5 pts)
+      // 10-point decay system over 15 minutes (900 seconds)
+      // >= 13 mins left (<= 120s elapsed): 10 points
+      // Gradually decays from 9 down to 1 over the remaining 780 seconds
       const elapsed = Math.max(0, Number(timeSpentSeconds) || 0);
-      bonusAwarded = Math.max(5, Math.round(challenge.timeBonusMax * Math.max(0, 1 - elapsed / 300)));
+      const timeLeft = Math.max(0, 900 - elapsed);
+      if (timeLeft >= 780) {
+        scoreAwarded = 10;
+      } else if (timeLeft > 0) {
+        scoreAwarded = Math.min(9, Math.max(1, 1 + Math.floor((timeLeft / 780) * 9)));
+      } else {
+        scoreAwarded = 1; // Minimum completion point if submitted at expiration
+      }
     }
 
     let message = "";

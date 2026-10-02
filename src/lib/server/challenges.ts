@@ -17,775 +17,840 @@ export const CHALLENGES: ChallengeServer[] = [
   {
     id: "alarm-01",
     stageNumber: 1,
-    title: "Galois Field CRC-16 Frame Checksum",
-    category: "Cyclic Redundancy Check",
-    points: 150,
-    timeBonusMax: 50,
-    description: `The Royal Mint vault telemetry frames are protected by a bit-reflected CRC-16 checksum using the reverse polynomial 0xA001 and an initial register state of 0xFFFF.
+    title: "Telemetry Matrix Robust Z-Score Normalization",
+    category: "NumPy Vectorized Cleaning",
+    points: 10,
+    timeBonusMax: 0,
+    description: `The vault multi-channel sensor array emits irregular telemetry vectors corrupted by NaN transmission dropouts and severe spike anomalies. Standard mean/std z-scores are heavily distorted by high-magnitude spikes.
 
-For each byte in the incoming frame payload, the byte is XORed into the 16-bit register, and each of its 8 bits is processed sequentially: if the least significant bit (LSB) is set prior to right-shifting, the register is shifted right by 1 and XORed with the polynomial; otherwise it is shifted right by 1.
+You must implement a Robust Z-Score pipeline using NumPy:
+1. Impute all NaN values in each column with that column's nan-median.
+2. Compute the Median Absolute Deviation (MAD = median(|x - median(x)|)) for each column (avoiding division by zero with a 1e-6 epsilon).
+3. Calculate the modified Z-score using Boris Iglewicz & David Hoaglin's formula:
+   modified_z = 0.6745 * (x - median) / MAD
+4. Count the number of outlier elements where |modified_z| > 3.5, and find the maximum absolute modified z-score across the matrix.
 
-The script must evaluate the telemetry frame payload and output the verified hexadecimal checksum in the format:
-\`DISARM_SEQ: CRC16-0x<HEX>\``,
-    buggyCode: `def compute_frame_crc16(payload: bytes) -> str:
-    crc = 0xFFFF
-    polynomial = 0xA001
+SECURITY AUDIT: Exactly 3 implementation bugs exist in the provided subroutine. Detect and eliminate all 3 defects to output the correct verification sequence:
+\`DISARM_SEQ: NP-ROBUST-Z-<COUNT:02d>-<MAX_SCORE:.2f}\``,
+    buggyCode: `import numpy as np
 
-    for byte in payload:
-        crc ^= byte
-        for _ in range(8):
-            crc >>= 1
-            if crc & 1:
-                crc ^= polynomial
+def compute_robust_z_scores(raw_data: np.ndarray) -> str:
+    # BUG 1: Computing nanmedian along the wrong axis (axis=1 rows instead of axis=0 columns)
+    col_medians = np.nanmedian(raw_data, axis=1)
+    inds = np.where(np.isnan(raw_data))
+    cleaned = raw_data.copy()
+    
+    # BUG 2: Zero imputation instead of replacing with column medians
+    cleaned[inds] = 0.0
 
-    return f"DISARM_SEQ: CRC16-0x{crc:04X}"
+    medians = np.median(cleaned, axis=0)
+    deviations = np.abs(cleaned - medians)
+    
+    # BUG 3: Calculating mean of deviations instead of median (MAD requires median)
+    mad = np.mean(deviations, axis=0)
+    mad = np.where(mad == 0, 1e-6, mad)
 
-if __name__ == "__main__":
-    frame_payload = b"ROYAL_MINT_VAULT_TELEMETRY_PACKET_99"
-    result = compute_frame_crc16(frame_payload)
-    print(result)
-`,
-    correctCode: `def compute_frame_crc16(payload: bytes) -> str:
-    crc = 0xFFFF
-    polynomial = 0xA001
+    # Modified Z-Score: 0.6745 * (x - median) / mad
+    mod_z = 0.6745 * (cleaned - medians) / mad
+    outlier_count = int(np.sum(np.abs(mod_z) > 3.5))
+    max_score = float(np.max(np.abs(mod_z)))
 
-    for byte in payload:
-        crc ^= byte
-        for _ in range(8):
-            lsb = crc & 1
-            crc >>= 1
-            if lsb:
-                crc ^= polynomial
-
-    return f"DISARM_SEQ: CRC16-0x{crc:04X}"
+    return f"DISARM_SEQ: NP-ROBUST-Z-{outlier_count:02d}-{max_score:.2f}"
 
 if __name__ == "__main__":
-    frame_payload = b"ROYAL_MINT_VAULT_TELEMETRY_PACKET_99"
-    result = compute_frame_crc16(frame_payload)
-    print(result)
+    telemetry = np.array([
+        [10.2, 45.1, np.nan, 120.5],
+        [11.5, 47.0, 310.2, 122.1],
+        [9.8, np.nan, 305.0, 119.8],
+        [10.5, 46.2, 315.4, 121.0],
+        [150.0, 48.1, 312.0, 500.0],
+        [10.1, 45.8, 308.5, 120.2],
+        [10.4, 46.5, 309.1, 121.4],
+    ], dtype=float)
+    print(compute_robust_z_scores(telemetry))
 `,
-    expectedOutput: "DISARM_SEQ: CRC16-0x6AE0",
+    correctCode: `import numpy as np
+
+def compute_robust_z_scores(raw_data: np.ndarray) -> str:
+    # FIX 1: Compute nanmedian along axis 0 (columns)
+    col_medians = np.nanmedian(raw_data, axis=0)
+    inds = np.where(np.isnan(raw_data))
+    cleaned = raw_data.copy()
+    
+    # FIX 2: Replace NaNs with the respective column median
+    cleaned[inds] = np.take(col_medians, inds[1])
+
+    medians = np.median(cleaned, axis=0)
+    deviations = np.abs(cleaned - medians)
+    
+    # FIX 3: Compute median of deviations for proper MAD
+    mad = np.median(deviations, axis=0)
+    mad = np.where(mad == 0, 1e-6, mad)
+
+    # Modified Z-Score: 0.6745 * (x - median) / mad
+    mod_z = 0.6745 * (cleaned - medians) / mad
+    outlier_count = int(np.sum(np.abs(mod_z) > 3.5))
+    max_score = float(np.max(np.abs(mod_z)))
+
+    return f"DISARM_SEQ: NP-ROBUST-Z-{outlier_count:02d}-{max_score:.2f}"
+
+if __name__ == "__main__":
+    telemetry = np.array([
+        [10.2, 45.1, np.nan, 120.5],
+        [11.5, 47.0, 310.2, 122.1],
+        [9.8, np.nan, 305.0, 119.8],
+        [10.5, 46.2, 315.4, 121.0],
+        [150.0, 48.1, 312.0, 500.0],
+        [10.1, 45.8, 308.5, 120.2],
+        [10.4, 46.5, 309.1, 121.4],
+    ], dtype=float)
+    print(compute_robust_z_scores(telemetry))
+`,
+    expectedOutput: "DISARM_SEQ: NP-ROBUST-Z-02-319.54",
   },
   {
     id: "alarm-02",
     stageNumber: 2,
-    title: "Optical Laser Corridor Dijkstra Shortest Path",
-    category: "Graph Theory / Priority Queues",
-    points: 150,
-    timeBonusMax: 50,
-    description: `The subterranean vault corridor is mapped as a weighted directed graph of optical sensor relay nodes. Our disarm transmitter must route a pulse from entry node 0 to terminal node 4 along the path that expends the absolute minimum optical energy.
+    title: "Financial Ledger Rolling VWAP & Anomaly Filter",
+    category: "Pandas Time-Series Wrangling",
+    points: 10,
+    timeBonusMax: 0,
+    description: `High-frequency transactions across foreign currency vaults must be evaluated to flag suspicious rapid-liquidity routing.
 
-The script models the network using an adjacency list and calculates the shortest path distance from start node 0 to target node 4.
+You must implement a 3-period grouped Volume Weighted Average Price (VWAP) calculation:
+1. Ensure the transaction DataFrame is sorted by \`['symbol', 'timestamp']\` and indices reset.
+2. Calculate price-volume product (price * volume).
+3. Compute 3-period rolling sum of price-volume and rolling sum of volume per currency symbol (min_periods=1), and divide to find rolling VWAP.
+4. Calculate percentage deviation: \`100 * |price - vwap| / vwap\`.
+5. Sum the total volume of all trades where percentage deviation exceeds 1.0%, and record the maximum percentage deviation.
 
-The output must report the minimum energy cost in the format:
-\`DISARM_SEQ: OPTICAL-MIN-ENERGY-<COST>\``,
-    buggyCode: `import heapq
+SECURITY AUDIT: Exactly 3 implementation bugs exist in the provided subroutine. Detect and eliminate all 3 defects to output the correct verification sequence:
+\`DISARM_SEQ: PD-VWAP-<FLAGGED_VOL>-<MAX_DEV:.2f}\``,
+    buggyCode: `import numpy as np
+import pandas as pd
 
-def find_minimum_optical_path(graph, start_node, target_node) -> str:
-    dist = {node: float("inf") for node in graph}
-    dist[start_node] = 0
+def audit_rolling_vwap(df: pd.DataFrame) -> str:
+    # BUG 1: sort_values called without reassigning or resetting index
+    df.sort_values(by=["symbol", "timestamp"])
+    df["pv"] = df["price"] * df["volume"]
 
-    pq = [(0, start_node)]
+    # Compute rolling values per symbol
+    df["rolling_pv"] = df.groupby("symbol")["pv"].transform(lambda s: s.rolling(3, min_periods=1).sum())
+    df["rolling_vol"] = df.groupby("symbol")["volume"].transform(lambda s: s.rolling(3, min_periods=1).sum())
+    
+    # BUG 2: Dividing by instant volume instead of 3-period rolling volume
+    df["vwap"] = df["rolling_pv"] / df["volume"]
 
-    while pq:
-        d, u = heapq.heappop(pq)
-        if d > dist[u]:
-            continue
+    # BUG 3: Missing absolute value and dividing by price instead of vwap
+    df["pct_dev"] = ((df["price"] - df["vwap"]) / df["price"]) * 100
+    
+    flagged = df[df["pct_dev"] > 1.0]
+    total_flagged_vol = int(flagged["volume"].sum())
+    max_dev = float(df["pct_dev"].max())
 
-        for v, weight in graph[u]:
-            if dist[u] + weight < dist[v]:
-                dist[v] = dist[u] + weight
-                heapq.heappush(pq, (v, dist[v]))
-
-    min_energy = dist[target_node]
-    return f"DISARM_SEQ: OPTICAL-MIN-ENERGY-{min_energy}"
-
-if __name__ == "__main__":
-    optical_grid = {
-        0: [(1, 7), (2, 9), (3, 14)],
-        1: [(0, 7), (2, 10), (3, 15)],
-        2: [(0, 9), (1, 10), (3, 11), (5, 2)],
-        3: [(0, 14), (1, 15), (2, 11), (4, 6)],
-        4: [(3, 6), (5, 9)],
-        5: [(2, 2), (4, 9)]
-    }
-    print(find_minimum_optical_path(optical_grid, 0, 4))
-`,
-    correctCode: `import heapq
-
-def find_minimum_optical_path(graph, start_node, target_node) -> str:
-    dist = {node: float("inf") for node in graph}
-    dist[start_node] = 0
-
-    pq = [(0, start_node)]
-
-    while pq:
-        d, u = heapq.heappop(pq)
-        if d > dist[u]:
-            continue
-
-        for v, weight in graph[u]:
-            if dist[u] + weight < dist[v]:
-                dist[v] = dist[u] + weight
-                heapq.heappush(pq, (dist[v], v))
-
-    min_energy = dist[target_node]
-    return f"DISARM_SEQ: OPTICAL-MIN-ENERGY-{min_energy}"
+    return f"DISARM_SEQ: PD-VWAP-{total_flagged_vol}-{max_dev:.2f}"
 
 if __name__ == "__main__":
-    optical_grid = {
-        0: [(1, 7), (2, 9), (3, 14)],
-        1: [(0, 7), (2, 10), (3, 15)],
-        2: [(0, 9), (1, 10), (3, 11), (5, 2)],
-        3: [(0, 14), (1, 15), (2, 11), (4, 6)],
-        4: [(3, 6), (5, 9)],
-        5: [(2, 2), (4, 9)]
+    data = {
+        "timestamp": pd.date_range("2026-01-01 09:00", periods=8, freq="5min"),
+        "symbol": ["ALPHA", "BETA", "ALPHA", "BETA", "ALPHA", "BETA", "ALPHA", "BETA"],
+        "price": [100.5, 50.2, 101.2, 50.8, 104.0, 49.5, 102.5, 51.0],
+        "volume": [1200, 800, 1500, 950, 3100, 700, 1400, 1100],
     }
-    print(find_minimum_optical_path(optical_grid, 0, 4))
+    df = pd.DataFrame(data)
+    print(audit_rolling_vwap(df))
 `,
-    expectedOutput: "DISARM_SEQ: OPTICAL-MIN-ENERGY-20",
+    correctCode: `import numpy as np
+import pandas as pd
+
+def audit_rolling_vwap(df: pd.DataFrame) -> str:
+    # FIX 1: Reassign sorted DataFrame and reset index
+    df = df.sort_values(by=["symbol", "timestamp"]).reset_index(drop=True)
+    df["pv"] = df["price"] * df["volume"]
+
+    # Compute rolling values per symbol
+    df["rolling_pv"] = df.groupby("symbol")["pv"].transform(lambda s: s.rolling(3, min_periods=1).sum())
+    df["rolling_vol"] = df.groupby("symbol")["volume"].transform(lambda s: s.rolling(3, min_periods=1).sum())
+    
+    # FIX 2: Divide rolling price-volume by rolling volume
+    df["vwap"] = df["rolling_pv"] / df["rolling_vol"]
+
+    # FIX 3: Use absolute percentage difference divided by vwap
+    df["pct_dev"] = (np.abs(df["price"] - df["vwap"]) / df["vwap"]) * 100
+    
+    flagged = df[df["pct_dev"] > 1.0]
+    total_flagged_vol = int(flagged["volume"].sum())
+    max_dev = float(df["pct_dev"].max())
+
+    return f"DISARM_SEQ: PD-VWAP-{total_flagged_vol}-{max_dev:.2f}"
+
+if __name__ == "__main__":
+    data = {
+        "timestamp": pd.date_range("2026-01-01 09:00", periods=8, freq="5min"),
+        "symbol": ["ALPHA", "BETA", "ALPHA", "BETA", "ALPHA", "BETA", "ALPHA", "BETA"],
+        "price": [100.5, 50.2, 101.2, 50.8, 104.0, 49.5, 102.5, 51.0],
+        "volume": [1200, 800, 1500, 950, 3100, 700, 1400, 1100],
+    }
+    df = pd.DataFrame(data)
+    print(audit_rolling_vwap(df))
+`,
+    expectedOutput: "DISARM_SEQ: PD-VWAP-3800-1.46",
   },
   {
     id: "alarm-03",
     stageNumber: 3,
-    title: "Multi-Rotor Reflector Scrambler",
-    category: "Cryptographic Machine",
-    points: 150,
-    timeBonusMax: 50,
-    description: `The rooftop emergency alarm beacon scrambles incoming authorization tokens through a 3-rotor transposition machine equipped with a fixed reflector (ref).
+    title: "Intrusion Detector Logistic Regression Calibration",
+    category: "Scikit-Learn Classification",
+    points: 10,
+    timeBonusMax: 0,
+    description: `A network packet classifier models security threats using Logistic Regression. To ensure robust inference without training contamination, feature scaling must be properly decoupled between training and test sets.
 
-Each character advances the machine step counter by 1. The signal passes forward through Rotor 1 (r1), Rotor 2 (r2), and Rotor 3 (r3), bounces off the reflector (ref), and then traverses backwards through the reciprocal inverse substitution wirings of Rotor 3, Rotor 2, and Rotor 1 before the step offset is removed.
+You must calibrate the classification pipeline:
+1. Fit \`StandardScaler\` on training features only, and transform test features without refitting.
+2. Train \`LogisticRegression(C=1.0, solver="liblinear", random_state=42)\`.
+3. Compute the true ROC-AUC score on the test set using calibrated predicted probabilities \`predict_proba()[:, 1]\`.
+4. Apply a classification threshold of 0.55 (\`probs >= 0.55\`) to determine predictions and count correctly identified test samples.
 
-The script must process the beacon token and emit the resulting scrambled ciphertext in the format:
-\`DISARM_SEQ: BEACON-SCRAMBLE-<CIPHERTEXT>\``,
-    buggyCode: `def scramble_beacon_token(token: str) -> str:
-    r1 = "EKMFLGDQVZNTOWYHXUSPAIBRCJ"
-    r2 = "AJDKSIRUXBLHWTMCQGZNPYFVOE"
-    r3 = "BDFHJLCPRTXVZNYEIWGAKMUSQO"
-    ref = "YRUHQSLDPXNGOKMIEBFZCWVJAT"
+SECURITY AUDIT: Exactly 3 implementation bugs exist in the provided subroutine. Detect and eliminate all 3 defects to output the correct verification sequence:
+\`DISARM_SEQ: SK-LOGREG-AUC-<AUC:.2f}-ACC-<CORRECT_COUNT>\``,
+    buggyCode: `import numpy as np
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import roc_auc_score
 
-    def process_char(char: str, step: int) -> str:
-        val = ord(char) - ord('A')
-        val = (val + step) % 26
-        val = ord(r1[val]) - ord('A')
-        val = ord(r2[val]) - ord('A')
-        val = ord(r3[val]) - ord('A')
-        val = ord(ref[val]) - ord('A')
-        val = ord(r3[val]) - ord('A')
-        val = ord(r2[val]) - ord('A')
-        val = ord(r1[val]) - ord('A')
-        val = (val - step + 26) % 26
-        return chr(val + ord('A'))
+def evaluate_intrusion_classifier(X_train, y_train, X_test, y_test) -> str:
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    
+    # BUG 1: Data leakage - refitting the scaler on test data
+    X_test_scaled = scaler.fit_transform(X_test)
 
-    scrambled = "".join(process_char(c, i + 1) for i, c in enumerate(token))
-    return f"DISARM_SEQ: BEACON-SCRAMBLE-{scrambled}"
+    clf = LogisticRegression(C=1.0, solver="liblinear", random_state=42)
+    clf.fit(X_train_scaled, y_train)
 
-if __name__ == "__main__":
-    beacon_token = "PROFESSOR"
-    print(scramble_beacon_token(beacon_token))
-`,
-    correctCode: `def scramble_beacon_token(token: str) -> str:
-    r1 = "EKMFLGDQVZNTOWYHXUSPAIBRCJ"
-    r2 = "AJDKSIRUXBLHWTMCQGZNPYFVOE"
-    r3 = "BDFHJLCPRTXVZNYEIWGAKMUSQO"
-    ref = "YRUHQSLDPXNGOKMIEBFZCWVJAT"
+    probs = clf.predict_proba(X_test_scaled)[:, 1]
+    
+    # BUG 2: Passing discrete binary class labels to roc_auc_score instead of probabilities
+    auc = roc_auc_score(y_test, clf.predict(X_test_scaled))
+    
+    threshold = 0.55
+    # BUG 3: Inverted threshold condition (< instead of >=)
+    preds = (probs < threshold).astype(int)
+    correct_count = int(np.sum(preds == y_test))
 
-    def process_char(char: str, step: int) -> str:
-        val = ord(char) - ord('A')
-        val = (val + step) % 26
-        val = ord(r1[val]) - ord('A')
-        val = ord(r2[val]) - ord('A')
-        val = ord(r3[val]) - ord('A')
-        val = ord(ref[val]) - ord('A')
-        val = r3.index(chr(val + ord('A')))
-        val = r2.index(chr(val + ord('A')))
-        val = r1.index(chr(val + ord('A')))
-        val = (val - step + 26) % 26
-        return chr(val + ord('A'))
-
-    scrambled = "".join(process_char(c, i + 1) for i, c in enumerate(token))
-    return f"DISARM_SEQ: BEACON-SCRAMBLE-{scrambled}"
+    return f"DISARM_SEQ: SK-LOGREG-AUC-{auc:.2f}-ACC-{correct_count}"
 
 if __name__ == "__main__":
-    beacon_token = "PROFESSOR"
-    print(scramble_beacon_token(beacon_token))
+    X_train = np.array([
+        [1.2, 0.5, 12.0], [0.8, 0.4, 10.5], [1.5, 0.9, 14.2], [0.5, 0.2, 8.0],
+        [3.2, 2.1, 25.0], [2.8, 1.8, 22.4], [3.5, 2.5, 28.1], [2.9, 2.0, 24.0]
+    ])
+    y_train = np.array([0, 0, 0, 0, 1, 1, 1, 1])
+
+    X_test = np.array([
+        [1.0, 0.6, 11.2], [3.1, 2.2, 26.0], [0.7, 0.3, 9.1], [3.0, 1.9, 23.5]
+    ])
+    y_test = np.array([0, 1, 0, 1])
+
+    print(evaluate_intrusion_classifier(X_train, y_train, X_test, y_test))
 `,
-    expectedOutput: "DISARM_SEQ: BEACON-SCRAMBLE-RTFCBTREE",
+    correctCode: `import numpy as np
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import roc_auc_score
+
+def evaluate_intrusion_classifier(X_train, y_train, X_test, y_test) -> str:
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    
+    # FIX 1: Transform test set using the scaler fitted on training data
+    X_test_scaled = scaler.transform(X_test)
+
+    clf = LogisticRegression(C=1.0, solver="liblinear", random_state=42)
+    clf.fit(X_train_scaled, y_train)
+
+    probs = clf.predict_proba(X_test_scaled)[:, 1]
+    
+    # FIX 2: Pass continuous predicted probabilities to roc_auc_score
+    auc = roc_auc_score(y_test, probs)
+    
+    threshold = 0.55
+    # FIX 3: Predict positive when probability meets or exceeds threshold
+    preds = (probs >= threshold).astype(int)
+    correct_count = int(np.sum(preds == y_test))
+
+    return f"DISARM_SEQ: SK-LOGREG-AUC-{auc:.2f}-ACC-{correct_count}"
+
+if __name__ == "__main__":
+    X_train = np.array([
+        [1.2, 0.5, 12.0], [0.8, 0.4, 10.5], [1.5, 0.9, 14.2], [0.5, 0.2, 8.0],
+        [3.2, 2.1, 25.0], [2.8, 1.8, 22.4], [3.5, 2.5, 28.1], [2.9, 2.0, 24.0]
+    ])
+    y_train = np.array([0, 0, 0, 0, 1, 1, 1, 1])
+
+    X_test = np.array([
+        [1.0, 0.6, 11.2], [3.1, 2.2, 26.0], [0.7, 0.3, 9.1], [3.0, 1.9, 23.5]
+    ])
+    y_test = np.array([0, 1, 0, 1])
+
+    print(evaluate_intrusion_classifier(X_train, y_train, X_test, y_test))
+`,
+    expectedOutput: "DISARM_SEQ: SK-LOGREG-AUC-1.00-ACC-4",
   },
   {
     id: "alarm-04",
     stageNumber: 4,
-    title: "Pressure Plate Disjoint Interval Union",
-    category: "Computational Geometry / Intervals",
-    points: 150,
-    timeBonusMax: 50,
-    description: `The treasury floor pressure plates are calibrated over overlapping continuous coordinate ranges [start, end]. To compute the true active safe floor area, overlapping and contiguous coordinate zones must be merged into disjoint unified intervals, and their cumulative span summed.
+    title: "Biometric Access Matrix SVD Low-Rank Compression",
+    category: "NumPy Matrix Algebra",
+    points: 10,
+    timeBonusMax: 0,
+    description: `High-dimensional biometric retinal scan feature matrices must be compressed using Singular Value Decomposition (SVD) for real-time vault authentication.
 
-The script processes a series of calibrated sensor intervals, merges all overlapping areas, and computes the total unified coverage span.
+You must implement a Rank-2 truncated SVD approximation:
+1. Decompose matrix A into U, S, and Vt using \`np.linalg.svd(A, full_matrices=False)\`.
+2. Construct the rank-2 approximation: \`A_approx = (U[:, :2] * S[:2]) @ Vt[:2, :]\`.
+3. Compute the Frobenius norm of the residual error: \`||A - A_approx||_F\`.
+4. Calculate the percentage of retained spectral energy: \`100 * sum(S[:2]^2) / sum(S^2)\`.
 
-The output must strictly match the format:
-\`DISARM_SEQ: PRESSURE-COVERAGE-<TOTAL_UNITS>\``,
-    buggyCode: `def calculate_pressure_coverage(raw_zones) -> str:
-    intervals = sorted(raw_zones, key=lambda x: x[0])
-    merged = [intervals[0]]
+SECURITY AUDIT: Exactly 3 implementation bugs exist in the provided subroutine. Detect and eliminate all 3 defects to output the correct verification sequence:
+\`DISARM_SEQ: NP-SVD-RANK2-ERR-<FRO_NORM:.3f}-ENG-<ENERGY:.1f}\``,
+    buggyCode: `import numpy as np
 
-    for start, end in intervals[1:]:
-        last_s, last_e = merged[-1]
-        if start <= last_e:
-            merged[-1] = (last_s, end)
-        else:
-            merged.append((start, end))
+def compress_biometric_matrix(A: np.ndarray, k: int = 2) -> str:
+    U, S, Vt = np.linalg.svd(A, full_matrices=False)
+    
+    # BUG 1: Using element-wise multiplication (*) instead of matrix product (@) for Vt
+    A_approx = (U[:, :k] * S[:k]) * Vt[:k, :]
 
-    total_coverage = sum(e - s for s, e in merged)
-    return f"DISARM_SEQ: PRESSURE-COVERAGE-{total_coverage}"
+    # BUG 2: Subtracting reconstructed matrix from itself instead of original matrix A
+    diff = A_approx - A_approx
+    fro_norm = np.linalg.norm(diff, ord="fro")
+    
+    # BUG 3: Retained energy formula uses unsquared singular values instead of variances (S^2)
+    retained_energy = (np.sum(S[:k]) / np.sum(S)) * 100
 
-if __name__ == "__main__":
-    sensor_zones = [
-        (12, 25), (20, 38), (45, 60), (15, 30),
-        (55, 75), (80, 95), (85, 90)
-    ]
-    print(calculate_pressure_coverage(sensor_zones))
-`,
-    correctCode: `def calculate_pressure_coverage(raw_zones) -> str:
-    intervals = sorted(raw_zones, key=lambda x: x[0])
-    merged = [intervals[0]]
-
-    for start, end in intervals[1:]:
-        last_s, last_e = merged[-1]
-        if start <= last_e:
-            merged[-1] = (last_s, max(last_e, end))
-        else:
-            merged.append((start, end))
-
-    total_coverage = sum(e - s for s, e in merged)
-    return f"DISARM_SEQ: PRESSURE-COVERAGE-{total_coverage}"
+    return f"DISARM_SEQ: NP-SVD-RANK{k}-ERR-{fro_norm:.3f}-ENG-{retained_energy:.1f}"
 
 if __name__ == "__main__":
-    sensor_zones = [
-        (12, 25), (20, 38), (45, 60), (15, 30),
-        (55, 75), (80, 95), (85, 90)
-    ]
-    print(calculate_pressure_coverage(sensor_zones))
+    A = np.array([
+        [12.5, 8.2, 4.1, 1.0],
+        [9.1, 15.3, 7.2, 3.4],
+        [4.0, 6.8, 18.1, 9.5],
+        [2.2, 3.1, 11.0, 14.8],
+        [8.4, 11.2, 10.5, 6.3]
+    ])
+    print(compress_biometric_matrix(A, 2))
 `,
-    expectedOutput: "DISARM_SEQ: PRESSURE-COVERAGE-71",
+    correctCode: `import numpy as np
+
+def compress_biometric_matrix(A: np.ndarray, k: int = 2) -> str:
+    U, S, Vt = np.linalg.svd(A, full_matrices=False)
+    
+    # FIX 1: Use matrix multiplication (@) with Vt[:k, :]
+    A_approx = (U[:, :k] * S[:k]) @ Vt[:k, :]
+
+    # FIX 2: Calculate residual difference from original matrix A
+    diff = A - A_approx
+    fro_norm = np.linalg.norm(diff, ord="fro")
+    
+    # FIX 3: Retained spectral energy uses squared singular values (S^2)
+    retained_energy = (np.sum(S[:k] ** 2) / np.sum(S ** 2)) * 100
+
+    return f"DISARM_SEQ: NP-SVD-RANK{k}-ERR-{fro_norm:.3f}-ENG-{retained_energy:.1f}"
+
+if __name__ == "__main__":
+    A = np.array([
+        [12.5, 8.2, 4.1, 1.0],
+        [9.1, 15.3, 7.2, 3.4],
+        [4.0, 6.8, 18.1, 9.5],
+        [2.2, 3.1, 11.0, 14.8],
+        [8.4, 11.2, 10.5, 6.3]
+    ])
+    print(compress_biometric_matrix(A, 2))
+`,
+    expectedOutput: "DISARM_SEQ: NP-SVD-RANK2-ERR-7.595-ENG-96.8",
   },
   {
     id: "alarm-05",
     stageNumber: 5,
-    title: "2D Thermal Anomaly Spatial Convolution",
-    category: "Matrix Signal Processing",
-    points: 150,
-    timeBonusMax: 50,
-    description: `The bullion vault temperature grid is scanned by an infrared sensor producing a 5x5 thermal matrix. The security system performs a 2D spatial convolution across the matrix using a 3x3 Laplacian edge-detection kernel to locate the maximum anomalous thermal energy peak.
+    title: "Vault Sensor Resampling & Exponential Moving Average",
+    category: "Pandas Time Series Interpolation",
+    points: 10,
+    timeBonusMax: 0,
+    description: `Vault thermal sensors stream irregular timestamped telemetry with periodic transmission voids. To monitor laser corridor stabilization, data must be interpolated, downsampled to uniform 15-minute intervals, and smoothed.
 
-The valid convolution slides the 3x3 kernel across all valid positions without padding, computing the sum of element-wise products at each window to identify the highest energy response.
+You must build a Pandas time-series pipeline:
+1. Interpolate missing values in temperature using time-weighted interpolation (\`method="time"\`).
+2. Resample the series into 15-minute fixed bins, calculating the mean of each bin.
+3. Compute the Exponential Weighted Moving Average (EWMA) with smoothing factor \`alpha=0.4\` and \`adjust=False\`.
+4. Output the final smoothed temperature reading and the maximum smoothed reading.
 
-The output must report the maximum detected peak in the format:
-\`DISARM_SEQ: THERMAL-PEAK-<PEAK_VAL>\``,
-    buggyCode: `def compute_thermal_anomaly_peak(image, kernel) -> str:
-    h = len(image)
-    w = len(image[0])
-    kh = len(kernel)
-    kw = len(kernel[0])
+SECURITY AUDIT: Exactly 3 implementation bugs exist in the provided subroutine. Detect and eliminate all 3 defects to output the correct verification sequence:
+\`DISARM_SEQ: PD-EWMA-LAST-<LAST:.2f}-MAX-<MAX:.2f}\``,
+    buggyCode: `import numpy as np
+import pandas as pd
 
-    max_peak = -float("inf")
+def process_thermal_telemetry(df: pd.DataFrame) -> str:
+    # BUG 1: Using linear interpolation instead of time-based interpolation for irregular timestamps
+    df["interp"] = df["temperature"].interpolate(method="linear")
 
-    for r in range(h - kh + 1):
-        for c in range(w - kw + 1):
-            accum = 0
-            for kr in range(kh):
-                for kc in range(kw):
-                    accum += image[r + kr][c + kc] * kernel[kc][kr]
+    # BUG 2: Resampling with sum() instead of mean()
+    resampled = df[["interp"]].resample("15min").sum()
 
-            if accum > max_peak:
-                max_peak = accum
+    # BUG 3: Using adjust=True which skews recursive exponential smoothing
+    resampled["ewma"] = resampled["interp"].ewm(alpha=0.4, adjust=True).mean()
 
-    return f"DISARM_SEQ: THERMAL-PEAK-{max_peak}"
+    final_ewma = float(resampled["ewma"].iloc[-1])
+    max_ewma = float(resampled["ewma"].max())
 
-if __name__ == "__main__":
-    sensor_matrix = [
-        [15, 20, 25, 30, 35],
-        [22, 88, 95, 80, 24],
-        [18, 92, 99, 85, 20],
-        [25, 84, 91, 78, 28],
-        [14, 19, 23, 29, 31]
-    ]
-    laplacian_kernel = [
-        [ 0, -1,  0],
-        [-1,  4, -1],
-        [ 0, -1,  0]
-    ]
-    print(compute_thermal_anomaly_peak(sensor_matrix, laplacian_kernel))
-`,
-    correctCode: `def compute_thermal_anomaly_peak(image, kernel) -> str:
-    h = len(image)
-    w = len(image[0])
-    kh = len(kernel)
-    kw = len(kernel[0])
-
-    max_peak = -float("inf")
-
-    for r in range(h - kh + 1):
-        for c in range(w - kw + 1):
-            accum = 0
-            for kr in range(kh):
-                for kc in range(kw):
-                    accum += image[r + kr][c + kc] * kernel[kr][kc]
-
-            if accum > max_peak:
-                max_peak = accum
-
-    return f"DISARM_SEQ: THERMAL-PEAK-{max_peak}"
+    return f"DISARM_SEQ: PD-EWMA-LAST-{final_ewma:.2f}-MAX-{max_ewma:.2f}"
 
 if __name__ == "__main__":
-    sensor_matrix = [
-        [15, 20, 25, 30, 35],
-        [22, 88, 95, 80, 24],
-        [18, 92, 99, 85, 20],
-        [25, 84, 91, 78, 28],
-        [14, 19, 23, 29, 31]
-    ]
-    laplacian_kernel = [
-        [ 0, -1,  0],
-        [-1,  4, -1],
-        [ 0, -1,  0]
-    ]
-    print(compute_thermal_anomaly_peak(sensor_matrix, laplacian_kernel))
+    ts = pd.date_range("2026-03-01 00:00", periods=12, freq="7min")
+    vals = [22.1, np.nan, 23.5, 24.0, np.nan, np.nan, 28.2, 29.0, 30.1, np.nan, 32.5, 33.0]
+    df = pd.DataFrame({"temperature": vals}, index=ts)
+    print(process_thermal_telemetry(df))
 `,
-    expectedOutput: "DISARM_SEQ: THERMAL-PEAK-123",
+    correctCode: `import numpy as np
+import pandas as pd
+
+def process_thermal_telemetry(df: pd.DataFrame) -> str:
+    # FIX 1: Use time-weighted interpolation for irregular time indexes
+    df["interp"] = df["temperature"].interpolate(method="time")
+
+    # FIX 2: Aggregate resampled 15-minute bins using mean()
+    resampled = df[["interp"]].resample("15min").mean()
+
+    # FIX 3: Use adjust=False for recursive exponential smoothing
+    resampled["ewma"] = resampled["interp"].ewm(alpha=0.4, adjust=False).mean()
+
+    final_ewma = float(resampled["ewma"].iloc[-1])
+    max_ewma = float(resampled["ewma"].max())
+
+    return f"DISARM_SEQ: PD-EWMA-LAST-{final_ewma:.2f}-MAX-{max_ewma:.2f}"
+
+if __name__ == "__main__":
+    ts = pd.date_range("2026-03-01 00:00", periods=12, freq="7min")
+    vals = [22.1, np.nan, 23.5, 24.0, np.nan, np.nan, 28.2, 29.0, 30.1, np.nan, 32.5, 33.0]
+    df = pd.DataFrame({"temperature": vals}, index=ts)
+    print(process_thermal_telemetry(df))
+`,
+    expectedOutput: "DISARM_SEQ: PD-EWMA-LAST-30.54-MAX-30.54",
   },
   {
     id: "alarm-06",
     stageNumber: 6,
-    title: "Biometric Scanner Multi-Hash Bloom Filter",
-    category: "Probabilistic Data Structures",
-    points: 150,
-    timeBonusMax: 50,
-    description: `The governor's elevator biometric terminal authenticates personnel badges against a 256-bit Bloom filter (represented as a 32-byte array) using three independent hash functions: DJB2 (h1), SDBM (h2), and FNV-1a (h3).
+    title: "Security Token Sublinear TF-IDF Cosine Similarity",
+    category: "Scikit-Learn NLP Feature Extraction",
+    points: 10,
+    timeBonusMax: 0,
+    description: `Incoming alarm override tokens are compared against known incident security logs to classify incident severity using Natural Language Processing.
 
-The filter is initialized with the authorized crew members. When scanning candidate badges, each badge is verified against the Bloom filter; a candidate is considered verified if all three corresponding bit indices are set.
+You must build an NLP similarity matcher using Scikit-Learn:
+1. Initialize \`TfidfVectorizer(ngram_range=(1, 2), stop_words="english", sublinear_tf=True)\` to extract unigrams and bigrams with sublinear frequency scaling.
+2. Fit the vectorizer on the combined documents and query (or transform query using the fitted document vectorizer).
+3. Compute cosine similarities between the query vector and all document vectors.
+4. Identify the index of the highest similarity document and report its similarity score.
 
-The script must tally how many scanned candidate badges pass the Bloom filter verification and emit:
-\`DISARM_SEQ: BLOOM-AUTH-COUNT-<COUNT>\``,
-    buggyCode: `def verify_authorized_personnel() -> str:
-    def h1(s):
-        h = 5381
-        for c in s:
-            h = ((h << 5) + h + ord(c)) & 0xFFFFFFFF
-        return h % 256
+SECURITY AUDIT: Exactly 3 implementation bugs exist in the provided subroutine. Detect and eliminate all 3 defects to output the correct verification sequence:
+\`DISARM_SEQ: SK-TFIDF-MATCH-DOC<INDEX>-SIM-<SIMILARITY:.3f}\``,
+    buggyCode: `import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
-    def h2(s):
-        h = 0
-        for c in s:
-            h = (ord(c) + (h << 6) + (h << 16) - h) & 0xFFFFFFFF
-        return h % 256
+def find_most_similar_incident(documents: list, query: str) -> str:
+    # BUG 1: ngram_range=(2, 2) excludes critical unigram security keywords
+    vectorizer = TfidfVectorizer(ngram_range=(2, 2), stop_words="english", sublinear_tf=True)
+    doc_vectors = vectorizer.fit_transform(documents)
 
-    def h3(s):
-        h = 2166136261
-        for c in s:
-            h = ((h ^ ord(c)) * 16777619) & 0xFFFFFFFF
-        return h % 256
+    # BUG 2: Separate vectorizer instance for query creates mismatched vocabulary dimensions
+    query_vector = TfidfVectorizer().fit_transform([query])
+    
+    # Matching requires identical vocabulary representation
+    similarities = cosine_similarity(query_vector, doc_vectors)[0]
+    
+    # BUG 3: argmin finds the lowest similarity match instead of highest match
+    best_idx = int(np.argmin(similarities))
+    best_sim = float(similarities[best_idx])
 
-    authorized_crew = ["BERLIN", "TOKYO", "NAIROBI", "RIO", "DENVER", "HELSINKI"]
-    filter_bytes = bytearray(32)
-
-    for member in authorized_crew:
-        for fn in (h1, h2, h3):
-            bit = fn(member)
-            filter_bytes[bit // 8] |= (1 << (7 - (bit % 8)))
-
-    scanned_candidates = ["TOKYO", "OSLO", "DENVER", "LISBON", "BERLIN", "PALERMO", "BOGOTA", "RIO"]
-    verified_count = 0
-
-    for candidate in scanned_candidates:
-        match = True
-        for fn in (h1, h2, h3):
-            bit = fn(candidate)
-            if not (filter_bytes[bit // 8] & (1 << (bit % 8))):
-                match = False
-                break
-        if match:
-            verified_count += 1
-
-    return f"DISARM_SEQ: BLOOM-AUTH-COUNT-{verified_count}"
+    return f"DISARM_SEQ: SK-TFIDF-MATCH-DOC{best_idx}-SIM-{best_sim:.3f}"
 
 if __name__ == "__main__":
-    print(verify_authorized_personnel())
+    documents = [
+        "perimeter breach alert sector 4 motion detected",
+        "routine vault diagnostic system operational normal status",
+        "unauthorized biometric scan override attempt in sub-vault",
+        "emergency power backup generator online circuit active",
+        "sector 4 perimeter alarm armed with biometric verification",
+    ]
+    query = "biometric security breach in sector 4"
+    print(find_most_similar_incident(documents, query))
 `,
-    correctCode: `def verify_authorized_personnel() -> str:
-    def h1(s):
-        h = 5381
-        for c in s:
-            h = ((h << 5) + h + ord(c)) & 0xFFFFFFFF
-        return h % 256
+    correctCode: `import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
-    def h2(s):
-        h = 0
-        for c in s:
-            h = (ord(c) + (h << 6) + (h << 16) - h) & 0xFFFFFFFF
-        return h % 256
+def find_most_similar_incident(documents: list, query: str) -> str:
+    # FIX 1: Include unigrams and bigrams (1, 2)
+    vectorizer = TfidfVectorizer(ngram_range=(1, 2), stop_words="english", sublinear_tf=True)
+    all_texts = documents + [query]
+    tfidf_matrix = vectorizer.fit_transform(all_texts)
 
-    def h3(s):
-        h = 2166136261
-        for c in s:
-            h = ((h ^ ord(c)) * 16777619) & 0xFFFFFFFF
-        return h % 256
+    # FIX 2: Extract query and document vectors from the shared vocabulary matrix
+    doc_vectors = tfidf_matrix[:-1]
+    query_vector = tfidf_matrix[-1:]
+    
+    similarities = cosine_similarity(query_vector, doc_vectors)[0]
+    
+    # FIX 3: argmax selects the highest similarity document
+    best_idx = int(np.argmax(similarities))
+    best_sim = float(similarities[best_idx])
 
-    authorized_crew = ["BERLIN", "TOKYO", "NAIROBI", "RIO", "DENVER", "HELSINKI"]
-    filter_bytes = bytearray(32)
-
-    for member in authorized_crew:
-        for fn in (h1, h2, h3):
-            bit = fn(member)
-            filter_bytes[bit // 8] |= (1 << (bit % 8))
-
-    scanned_candidates = ["TOKYO", "OSLO", "DENVER", "LISBON", "BERLIN", "PALERMO", "BOGOTA", "RIO"]
-    verified_count = 0
-
-    for candidate in scanned_candidates:
-        match = True
-        for fn in (h1, h2, h3):
-            bit = fn(candidate)
-            if not (filter_bytes[bit // 8] & (1 << (bit % 8))):
-                match = False
-                break
-        if match:
-            verified_count += 1
-
-    return f"DISARM_SEQ: BLOOM-AUTH-COUNT-{verified_count}"
+    return f"DISARM_SEQ: SK-TFIDF-MATCH-DOC{best_idx}-SIM-{best_sim:.3f}"
 
 if __name__ == "__main__":
-    print(verify_authorized_personnel())
+    documents = [
+        "perimeter breach alert sector 4 motion detected",
+        "routine vault diagnostic system operational normal status",
+        "unauthorized biometric scan override attempt in sub-vault",
+        "emergency power backup generator online circuit active",
+        "sector 4 perimeter alarm armed with biometric verification",
+    ]
+    query = "biometric security breach in sector 4"
+    print(find_most_similar_incident(documents, query))
 `,
-    expectedOutput: "DISARM_SEQ: BLOOM-AUTH-COUNT-4",
+    expectedOutput: "DISARM_SEQ: SK-TFIDF-MATCH-DOC0-SIM-0.155",
   },
   {
     id: "alarm-07",
     stageNumber: 7,
-    title: "Substation Capacitor Subset-Sum Dynamic Programming",
-    category: "Knapsack Optimization",
-    points: 150,
-    timeBonusMax: 50,
-    description: `To disarm the electromagnetic lock coils, 12 discrete backup capacitor blocks must be partitioned into two disjoint subsets such that the absolute difference between their total energy ratings is minimized.
+    title: "Surveillance Drone K-Means Clustering & Silhouette Validation",
+    category: "Scikit-Learn Unsupervised Clustering",
+    points: 10,
+    timeBonusMax: 0,
+    description: `Patrol drones monitoring the central reserve transmit geographic coordinate vectors. To neutralize tracking antennas, clusters must be partitioned into 3 distinct operational patrol sectors and validated with Silhouette scoring.
 
-Each capacitor can be selected at most once (0/1 partition problem). The script must determine the optimal partition and calculate the minimum possible energy delta between the two subsets.
+You must configure the clustering engine:
+1. Initialize \`KMeans(n_clusters=3, random_state=42, n_init=10)\`.
+2. Fit the model and compute cluster labels on coordinate matrix X.
+3. Compute the overall Silhouette coefficient of the clustering: \`silhouette_score(X, labels)\`.
+4. Extract the final model inertia (within-cluster sum of squares).
 
-The output must be formatted as:
-\`DISARM_SEQ: VOLTAGE-MIN-DELTA-<DELTA>\``,
-    buggyCode: `def balance_substation_capacitors(capacitors) -> str:
-    total = sum(capacitors)
-    target = total // 2
+SECURITY AUDIT: Exactly 3 implementation bugs exist in the provided subroutine. Detect and eliminate all 3 defects to output the correct verification sequence:
+\`DISARM_SEQ: SK-KMEANS-SIL-<SCORE:.3f}-INERTIA-<INERTIA:.1f}\``,
+    buggyCode: `import numpy as np
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
 
-    dp = [False] * (target + 1)
-    dp[0] = True
+def optimize_drone_sectors(X: np.ndarray) -> str:
+    # BUG 1: Configured for 2 clusters instead of the required 3 sectors
+    kmeans = KMeans(n_clusters=2, random_state=42, n_init=10)
+    
+    # BUG 2: Reading labels_ attribute without fitting model (throws AttributeError)
+    labels = kmeans.labels_
 
-    for cap in capacitors:
-        for j in range(cap, target + 1):
-            if dp[j - cap]:
-                dp[j] = True
+    # BUG 3: Transposed coordinates matrix passed to silhouette_score
+    score = silhouette_score(X.T, labels)
+    inertia = float(kmeans.inertia_)
 
-    best_sum = 0
-    for j in range(target, -1, -1):
-        if dp[j]:
-            best_sum = j
-            break
-
-    min_delta = total - 2 * best_sum
-    return f"DISARM_SEQ: VOLTAGE-MIN-DELTA-{min_delta}"
-
-if __name__ == "__main__":
-    bank_capacitors = [14, 27, 33, 41, 55, 62, 78, 89, 94, 106, 118, 125]
-    print(balance_substation_capacitors(bank_capacitors))
-`,
-    correctCode: `def balance_substation_capacitors(capacitors) -> str:
-    total = sum(capacitors)
-    target = total // 2
-
-    dp = [False] * (target + 1)
-    dp[0] = True
-
-    for cap in capacitors:
-        for j in range(target, cap - 1, -1):
-            if dp[j - cap]:
-                dp[j] = True
-
-    best_sum = 0
-    for j in range(target, -1, -1):
-        if dp[j]:
-            best_sum = j
-            break
-
-    min_delta = total - 2 * best_sum
-    return f"DISARM_SEQ: VOLTAGE-MIN-DELTA-{min_delta}"
+    return f"DISARM_SEQ: SK-KMEANS-SIL-{score:.3f}-INERTIA-{inertia:.1f}"
 
 if __name__ == "__main__":
-    bank_capacitors = [14, 27, 33, 41, 55, 62, 78, 89, 94, 106, 118, 125]
-    print(balance_substation_capacitors(bank_capacitors))
+    c1 = np.array([[10, 12], [11, 13], [9, 11], [10.5, 12.5]], dtype=float)
+    c2 = np.array([[50, 52], [51, 50], [49, 53], [50.5, 51.5]], dtype=float)
+    c3 = np.array([[90, 88], [91, 89], [89, 87], [90.2, 88.5]], dtype=float)
+    X = np.vstack([c1, c2, c3])
+    print(optimize_drone_sectors(X))
 `,
-    expectedOutput: "DISARM_SEQ: VOLTAGE-MIN-DELTA-0",
+    correctCode: `import numpy as np
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+
+def optimize_drone_sectors(X: np.ndarray) -> str:
+    # FIX 1: Specify n_clusters=3
+    kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
+    
+    # FIX 2: Fit model and generate cluster assignment labels
+    labels = kmeans.fit_predict(X)
+
+    # FIX 3: Pass untransposed coordinate samples matrix X
+    score = silhouette_score(X, labels)
+    inertia = float(kmeans.inertia_)
+
+    return f"DISARM_SEQ: SK-KMEANS-SIL-{score:.3f}-INERTIA-{inertia:.1f}"
+
+if __name__ == "__main__":
+    c1 = np.array([[10, 12], [11, 13], [9, 11], [10.5, 12.5]], dtype=float)
+    c2 = np.array([[50, 52], [51, 50], [49, 53], [50.5, 51.5]], dtype=float)
+    c3 = np.array([[90, 88], [91, 89], [89, 87], [90.2, 88.5]], dtype=float)
+    X = np.vstack([c1, c2, c3])
+    print(optimize_drone_sectors(X))
+`,
+    expectedOutput: "DISARM_SEQ: SK-KMEANS-SIL-0.970-INERTIA-15.5",
   },
   {
     id: "alarm-08",
     stageNumber: 8,
-    title: "Acoustic Siren Sliding Window Monotonic Deque",
-    category: "Amortized Data Structures",
-    points: 150,
-    timeBonusMax: 50,
-    description: `The alarm system klaxon generates high-amplitude soundwaves monitored across a sliding window of size K = 4. To compute the cancellation frequency, the system must record the maximum peak resonance observed in every consecutive window of length 4 across the telemetry sequence and sum these peak values.
+    title: "Datacenter Firewall MultiIndex Pivoting & Threat Score",
+    category: "Pandas Hierarchical Pivoting",
+    points: 10,
+    timeBonusMax: 0,
+    description: `Distributed firewall nodes record multi-severity intrusion events across infrastructure tiers. To pinpoint the most compromised datacenter, data must be aggregated via a MultiIndex pivot table and weighted threat scoring.
 
-The script tracks the stream telemetry and computes the total sum of all sliding window maximums.
+You must build a Pandas aggregation pipeline:
+1. Construct a pivot table with \`index=['datacenter', 'tier']\`, \`columns='severity'\`, \`values='events'\`, and \`aggfunc='sum'\` (filling missing cells with 0).
+2. Sum event counts per datacenter by grouping at index level 0 (\`level=0\`).
+3. Compute the composite threat weight: \`CRITICAL * 3.0 + HIGH * 1.5\`.
+4. Identify the datacenter with the maximum threat weight and report its score.
 
-The output must be formatted as:
-\`DISARM_SEQ: KLAXON-PEAK-SUM-<TOTAL>\``,
-    buggyCode: `from collections import deque
+SECURITY AUDIT: Exactly 3 implementation bugs exist in the provided subroutine. Detect and eliminate all 3 defects to output the correct verification sequence:
+\`DISARM_SEQ: PD-PIVOT-TOP-<DATACENTER>-SCORE-<WEIGHT:.1f}\``,
+    buggyCode: `import pandas as pd
 
-def compute_sliding_resonance_sum(telemetry, k: int) -> str:
-    dq = deque()
-    peak_sum = 0
+def compute_datacenter_threats(df: pd.DataFrame) -> str:
+    # BUG 1: Default aggfunc="mean" instead of "sum" alters total incident counts
+    pivot = pd.pivot_table(
+        df,
+        values="events",
+        index=["datacenter", "tier"],
+        columns="severity",
+        fill_value=0,
+    )
 
-    for i in range(len(telemetry)):
-        if dq and dq[0] <= i - k:
-            dq.popleft()
+    # BUG 2: Grouping by level=1 (tier) instead of level=0 (datacenter)
+    dc_summary = pivot.groupby(level=1).sum()
+    crit = dc_summary["CRITICAL"] if "CRITICAL" in dc_summary else 0
+    high = dc_summary["HIGH"] if "HIGH" in dc_summary else 0
+    
+    # BUG 3: Inverted multiplier coefficients (1.5 for CRITICAL and 3.0 for HIGH)
+    dc_summary["threat_weight"] = crit * 1.5 + high * 3.0
+    top_dc = str(dc_summary["threat_weight"].idxmax())
+    max_weight = float(dc_summary["threat_weight"].max())
 
-        while dq and telemetry[dq[-1]] >= telemetry[i]:
-            dq.pop()
-
-        dq.append(i)
-
-        if i >= k - 1:
-            peak_sum += telemetry[dq[0]]
-
-    return f"DISARM_SEQ: KLAXON-PEAK-SUM-{peak_sum}"
-
-if __name__ == "__main__":
-    siren_telemetry = [440, 520, 490, 610, 590, 720, 680, 800, 750, 890, 830, 960]
-    print(compute_sliding_resonance_sum(siren_telemetry, 4))
-`,
-    correctCode: `from collections import deque
-
-def compute_sliding_resonance_sum(telemetry, k: int) -> str:
-    dq = deque()
-    peak_sum = 0
-
-    for i in range(len(telemetry)):
-        if dq and dq[0] <= i - k:
-            dq.popleft()
-
-        while dq and telemetry[dq[-1]] <= telemetry[i]:
-            dq.pop()
-
-        dq.append(i)
-
-        if i >= k - 1:
-            peak_sum += telemetry[dq[0]]
-
-    return f"DISARM_SEQ: KLAXON-PEAK-SUM-{peak_sum}"
+    return f"DISARM_SEQ: PD-PIVOT-TOP-{top_dc}-SCORE-{max_weight:.1f}"
 
 if __name__ == "__main__":
-    siren_telemetry = [440, 520, 490, 610, 590, 720, 680, 800, 750, 890, 830, 960]
-    print(compute_sliding_resonance_sum(siren_telemetry, 4))
+    raw_events = [
+        {"datacenter": "DC-NORTH", "tier": "DB", "severity": "HIGH", "events": 14},
+        {"datacenter": "DC-NORTH", "tier": "APP", "severity": "LOW", "events": 45},
+        {"datacenter": "DC-NORTH", "tier": "DB", "severity": "CRITICAL", "events": 8},
+        {"datacenter": "DC-SOUTH", "tier": "APP", "severity": "HIGH", "events": 22},
+        {"datacenter": "DC-SOUTH", "tier": "DB", "severity": "HIGH", "events": 19},
+        {"datacenter": "DC-SOUTH", "tier": "APP", "severity": "CRITICAL", "events": 5},
+        {"datacenter": "DC-EAST", "tier": "DB", "severity": "HIGH", "events": 31},
+        {"datacenter": "DC-EAST", "tier": "APP", "severity": "HIGH", "events": 18},
+    ]
+    df = pd.DataFrame(raw_events)
+    print(compute_datacenter_threats(df))
 `,
-    expectedOutput: "DISARM_SEQ: KLAXON-PEAK-SUM-7000",
+    correctCode: `import pandas as pd
+
+def compute_datacenter_threats(df: pd.DataFrame) -> str:
+    # FIX 1: Explicitly specify aggfunc="sum"
+    pivot = pd.pivot_table(
+        df,
+        values="events",
+        index=["datacenter", "tier"],
+        columns="severity",
+        aggfunc="sum",
+        fill_value=0,
+    )
+
+    # FIX 2: Group by level=0 to aggregate across datacenters
+    dc_summary = pivot.groupby(level=0).sum()
+    crit = dc_summary["CRITICAL"] if "CRITICAL" in dc_summary else 0
+    high = dc_summary["HIGH"] if "HIGH" in dc_summary else 0
+    
+    # FIX 3: Weight CRITICAL * 3.0 and HIGH * 1.5
+    dc_summary["threat_weight"] = crit * 3.0 + high * 1.5
+    top_dc = str(dc_summary["threat_weight"].idxmax())
+    max_weight = float(dc_summary["threat_weight"].max())
+
+    return f"DISARM_SEQ: PD-PIVOT-TOP-{top_dc}-SCORE-{max_weight:.1f}"
+
+if __name__ == "__main__":
+    raw_events = [
+        {"datacenter": "DC-NORTH", "tier": "DB", "severity": "HIGH", "events": 14},
+        {"datacenter": "DC-NORTH", "tier": "APP", "severity": "LOW", "events": 45},
+        {"datacenter": "DC-NORTH", "tier": "DB", "severity": "CRITICAL", "events": 8},
+        {"datacenter": "DC-SOUTH", "tier": "APP", "severity": "HIGH", "events": 22},
+        {"datacenter": "DC-SOUTH", "tier": "DB", "severity": "HIGH", "events": 19},
+        {"datacenter": "DC-SOUTH", "tier": "APP", "severity": "CRITICAL", "events": 5},
+        {"datacenter": "DC-EAST", "tier": "DB", "severity": "HIGH", "events": 31},
+        {"datacenter": "DC-EAST", "tier": "APP", "severity": "HIGH", "events": 18},
+    ]
+    df = pd.DataFrame(raw_events)
+    print(compute_datacenter_threats(df))
+`,
+    expectedOutput: "DISARM_SEQ: PD-PIVOT-TOP-DC-SOUTH-SCORE-76.5",
   },
   {
     id: "alarm-09",
     stageNumber: 9,
-    title: "Huffman Priority Queue Prefix Coding",
-    category: "Compression & Greedy Trees",
-    points: 150,
-    timeBonusMax: 50,
-    description: `The safe's internal firmware commands are encoded using canonical prefix Huffman coding. The routine constructs a priority min-heap from character frequencies, iteratively joins the two lowest-frequency subtrees until a single binary prefix tree remains, and derives the variable-length bit codes for each symbol.
+    title: "Sensor Neural Weight Ridge Gradient Descent Optimizer",
+    category: "NumPy Vectorized Optimization",
+    points: 10,
+    timeBonusMax: 0,
+    description: `A hardware sensor calibrator fits linear regression weights using vectorized batch gradient descent with L2 Ridge Regularization.
 
-The script encodes the command string "ABFACED" using the generated prefix codes.
+You must optimize the regression model over 100 epochs:
+1. Matrix-vector prediction: \`preds = X @ w\`.
+2. Compute residual error: \`error = preds - y\`.
+3. Compute vectorized Ridge gradient: \`grad = (1 / m) * (X.T @ error) + (lambda_reg / m) * w\`.
+4. Perform gradient descent step: \`w -= lr * grad\` (\`lr=0.05\`, \`lambda_reg=0.1\`).
+5. Compute total regularized loss: \`loss = (1 / (2*m)) * ||X@w - y||^2 + (lambda_reg / (2*m)) * ||w||^2\` and L2 norm of weights \`||w||\`.
 
-The output must report the total bit length followed by the first 8 bits of the encoded payload:
-\`DISARM_SEQ: HUFFMAN-BITS-<LENGTH>-<FIRST_8_BITS>\``,
-    buggyCode: `import heapq
+SECURITY AUDIT: Exactly 3 implementation bugs exist in the provided subroutine. Detect and eliminate all 3 defects to output the correct verification sequence:
+\`DISARM_SEQ: NP-RIDGE-LOSS-<LOSS:.3f}-WNORM-<NORM:.2f}\``,
+    buggyCode: `import numpy as np
 
-def generate_huffman_encoding(frequencies, message: str) -> str:
-    heap = []
-    for ch, freq in frequencies.items():
-        heapq.heappush(heap, (freq, ch))
+def train_ridge_regression(X: np.ndarray, y: np.ndarray, epochs: int = 100) -> str:
+    w = np.zeros(X.shape[1])
+    lr = 0.05
+    lambda_reg = 0.1
+    m = len(y)
 
-    tree = {}
-    node_id = 0
+    for _ in range(epochs):
+        preds = X @ w
+        error = preds - y
+        
+        # BUG 1: Missing transpose on X causes matrix dimension incompatibility
+        # BUG 2: Omitting the Ridge L2 weight penalty in the gradient calculation
+        grad = (1 / m) * (X @ error)
+        
+        # BUG 3: Gradient ascent step (+ instead of -) causes divergence
+        w += lr * grad
 
-    while len(heap) > 1:
-        f1, left = heapq.heappop(heap)
-        f2, right = heapq.heappop(heap)
+    final_loss = (1 / (2 * m)) * np.sum((X @ w - y) ** 2) + (lambda_reg / (2 * m)) * np.sum(w ** 2)
+    w_norm = float(np.linalg.norm(w))
 
-        parent = f"NODE_{node_id}"
-        tree[parent] = (left, right)
-        heapq.heappush(heap, (f1 + f2, parent))
-        node_id += 1
-
-    codes = {}
-    def build_codes(node, prefix=""):
-        if node in frequencies:
-            codes[node] = prefix
-            return
-        l_child, r_child = tree[node]
-        build_codes(l_child, prefix + "0")
-        build_codes(r_child, prefix + "1")
-
-    root = heap[0][1]
-    build_codes(root)
-
-    encoded_bits = "".join(codes[c] for c in message)
-    return f"DISARM_SEQ: HUFFMAN-BITS-{len(encoded_bits)}-{encoded_bits[:8]}"
+    return f"DISARM_SEQ: NP-RIDGE-LOSS-{final_loss:.3f}-WNORM-{w_norm:.2f}"
 
 if __name__ == "__main__":
-    char_freqs = {"A": 45, "B": 13, "C": 12, "D": 16, "E": 9, "F": 5}
-    firmware_command = "ABFACED"
-    try:
-        print(generate_huffman_encoding(char_freqs, firmware_command))
-    except Exception as e:
-        print(f"ERROR: {type(e).__name__}: {e}")
+    X = np.array([
+        [1.0, 2.0, 1.5], [2.0, 1.0, 2.5], [1.5, 3.0, 1.0], [3.0, 2.5, 3.0],
+        [2.5, 1.5, 2.0], [3.5, 3.0, 2.5], [1.0, 1.5, 3.0], [2.0, 3.5, 1.5]
+    ])
+    y = np.array([5.5, 7.0, 6.8, 11.2, 8.0, 11.5, 6.2, 9.8])
+    print(train_ridge_regression(X, y))
 `,
-    correctCode: `import heapq
+    correctCode: `import numpy as np
 
-def generate_huffman_encoding(frequencies, message: str) -> str:
-    heap = []
-    uid = 0
-    for ch, freq in frequencies.items():
-        heapq.heappush(heap, (freq, uid, ch))
-        uid += 1
+def train_ridge_regression(X: np.ndarray, y: np.ndarray, epochs: int = 100) -> str:
+    w = np.zeros(X.shape[1])
+    lr = 0.05
+    lambda_reg = 0.1
+    m = len(y)
 
-    tree = {}
+    for _ in range(epochs):
+        preds = X @ w
+        error = preds - y
+        
+        # FIX 1 & 2: Correct matrix multiplication (X.T @ error) and include Ridge penalty
+        grad = (1 / m) * (X.T @ error) + (lambda_reg / m) * w
+        
+        # FIX 3: Gradient descent step subtracts gradient
+        w -= lr * grad
 
-    while len(heap) > 1:
-        f1, u1, left = heapq.heappop(heap)
-        f2, u2, right = heapq.heappop(heap)
+    final_loss = (1 / (2 * m)) * np.sum((X @ w - y) ** 2) + (lambda_reg / (2 * m)) * np.sum(w ** 2)
+    w_norm = float(np.linalg.norm(w))
 
-        parent = f"NODE_{uid}"
-        tree[parent] = (left, right)
-        heapq.heappush(heap, (f1 + f2, uid, parent))
-        uid += 1
-
-    codes = {}
-    def build_codes(node, prefix=""):
-        if node in frequencies:
-            codes[node] = prefix
-            return
-        l_child, r_child = tree[node]
-        build_codes(l_child, prefix + "0")
-        build_codes(r_child, prefix + "1")
-
-    root = heap[0][2]
-    build_codes(root)
-
-    encoded_bits = "".join(codes[c] for c in message)
-    return f"DISARM_SEQ: HUFFMAN-BITS-{len(encoded_bits)}-{encoded_bits[:8]}"
+    return f"DISARM_SEQ: NP-RIDGE-LOSS-{final_loss:.3f}-WNORM-{w_norm:.2f}"
 
 if __name__ == "__main__":
-    char_freqs = {"A": 45, "B": 13, "C": 12, "D": 16, "E": 9, "F": 5}
-    firmware_command = "ABFACED"
-    print(generate_huffman_encoding(char_freqs, firmware_command))
+    X = np.array([
+        [1.0, 2.0, 1.5], [2.0, 1.0, 2.5], [1.5, 3.0, 1.0], [3.0, 2.5, 3.0],
+        [2.5, 1.5, 2.0], [3.5, 3.0, 2.5], [1.0, 1.5, 3.0], [2.0, 3.5, 1.5]
+    ])
+    y = np.array([5.5, 7.0, 6.8, 11.2, 8.0, 11.5, 6.2, 9.8])
+    print(train_ridge_regression(X, y))
 `,
-    expectedOutput: "DISARM_SEQ: HUFFMAN-BITS-19-01011100",
+    expectedOutput: "DISARM_SEQ: NP-RIDGE-LOSS-0.090-WNORM-2.26",
   },
   {
     id: "alarm-10",
     stageNumber: 10,
-    title: "ChaCha20 32-Bit Quarter-Round Matrix Scrambler",
-    category: "Symmetric Stream Cipher Internals",
-    points: 150,
-    timeBonusMax: 50,
-    description: `The Professor's master override terminal scrambles commands through a 16-word state matrix executed over 5 full double-rounds (alternating 4 column quarter-rounds and 4 diagonal quarter-rounds).
+    title: "Threat Level Confusion Matrix & Macro-F1 Metric",
+    category: "Scikit-Learn Evaluation Metrics",
+    points: 10,
+    timeBonusMax: 0,
+    description: `A 3-class alarm classifier categorizes intrusion telemetry into [0: Low, 1: Medium, 2: High]. Because the distribution across classes is imbalanced, evaluation requires computing Macro-averaged F1 and per-class precision metrics.
 
-Each quarter-round performs modular 32-bit unsigned addition, bitwise XOR, and cyclic left rotation (rotl32) with rotation distances 16, 12, 8, and 7 across the four selected state words.
+You must evaluate classifier predictions:
+1. Generate the 3x3 confusion matrix: \`confusion_matrix(y_true, y_pred, labels=[0, 1, 2])\`.
+2. Compute the Macro-averaged F1 score: \`f1_score(y_true, y_pred, average="macro")\`.
+3. Compute class 0 precision from the confusion matrix: \`TP / (TP + FP)\`, where False Positives for class 0 are the sum of column 0 minus TP.
 
-The script executes the 10 quarter-round operations and computes the 32-bit checksum of the final state words:
-\`DISARM_SEQ: CHACHA-WORD-0x<8-DIGIT-HEX>\``,
-    buggyCode: `def rotl32(v: int, c: int) -> int:
-    return (((v << c) & 0xFFFFFFFF) | (v >> (32 - c))) & 0xFFFFFFFF
+SECURITY AUDIT: Exactly 3 implementation bugs exist in the provided subroutine. Detect and eliminate all 3 defects to output the correct verification sequence:
+\`DISARM_SEQ: SK-METRICS-MACROF1-<F1:.3f}-PREC0-<PREC:.2f}\``,
+    buggyCode: `import numpy as np
+from sklearn.metrics import confusion_matrix, f1_score
 
-def quarter_round(s, a: int, b: int, c: int, d: int):
-    s[a] += s[b]
-    s[d] = rotl32(s[d] ^ s[a], 16)
-    s[c] += s[d]
-    s[b] = rotl32(s[b] ^ s[c], 12)
-    s[a] += s[b]
-    s[d] = rotl32(s[d] ^ s[a], 8)
-    s[c] += s[d]
-    s[b] = rotl32(s[b] ^ s[c], 7)
+def evaluate_alarm_predictions(y_true: np.ndarray, y_pred: np.ndarray) -> str:
+    cm = confusion_matrix(y_true, y_pred, labels=[0, 1, 2])
+    
+    # BUG 1: average="micro" used instead of average="macro"
+    f1_val = f1_score(y_true, y_pred, average="micro")
 
-def execute_master_stream_cipher() -> str:
-    state = [
-        0x61707865, 0x3320646e, 0x79622d32, 0x6b206574,
-        0x03020100, 0x07060504, 0x0b0a0908, 0x0f0e0d0c,
-        0x13121110, 0x17161514, 0x1b1a1918, 0x1f1e1d1c,
-        0x00000001, 0x09000000, 0x4a000000, 0x00000000
-    ]
+    tp_0 = cm[0, 0]
+    # BUG 2: Summing row 0 instead of column 0 gives False Negatives rather than False Positives
+    fp_0 = np.sum(cm[0, :]) - tp_0
+    
+    # BUG 3: Dividing tp_0 by fp_0 instead of (tp_0 + fp_0)
+    prec_0 = float(tp_0 / fp_0) if fp_0 > 0 else 0.0
 
-    for _ in range(5):
-        quarter_round(state, 0, 4, 8, 12)
-        quarter_round(state, 1, 5, 9, 13)
-        quarter_round(state, 2, 6, 10, 14)
-        quarter_round(state, 3, 7, 11, 15)
-        quarter_round(state, 0, 5, 10, 15)
-        quarter_round(state, 1, 6, 11, 12)
-        quarter_round(state, 2, 7, 8, 13)
-        quarter_round(state, 3, 4, 9, 14)
-
-    checksum = sum(state) & 0xFFFFFFFF
-    return f"DISARM_SEQ: CHACHA-WORD-0x{checksum:08X}"
+    return f"DISARM_SEQ: SK-METRICS-MACROF1-{f1_val:.3f}-PREC0-{prec_0:.2f}"
 
 if __name__ == "__main__":
-    print(execute_master_stream_cipher())
+    y_true = np.array([0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 2, 1])
+    y_pred = np.array([0, 1, 1, 0, 2, 2, 0, 1, 2, 1, 2, 1])
+    print(evaluate_alarm_predictions(y_true, y_pred))
 `,
-    correctCode: `def rotl32(v: int, c: int) -> int:
-    return (((v << c) & 0xFFFFFFFF) | (v >> (32 - c))) & 0xFFFFFFFF
+    correctCode: `import numpy as np
+from sklearn.metrics import confusion_matrix, f1_score
 
-def quarter_round(s, a: int, b: int, c: int, d: int):
-    s[a] = (s[a] + s[b]) & 0xFFFFFFFF
-    s[d] = rotl32(s[d] ^ s[a], 16)
-    s[c] = (s[c] + s[d]) & 0xFFFFFFFF
-    s[b] = rotl32(s[b] ^ s[c], 12)
-    s[a] = (s[a] + s[b]) & 0xFFFFFFFF
-    s[d] = rotl32(s[d] ^ s[a], 8)
-    s[c] = (s[c] + s[d]) & 0xFFFFFFFF
-    s[b] = rotl32(s[b] ^ s[c], 7)
+def evaluate_alarm_predictions(y_true: np.ndarray, y_pred: np.ndarray) -> str:
+    cm = confusion_matrix(y_true, y_pred, labels=[0, 1, 2])
+    
+    # FIX 1: Compute unweighted macro-averaged F1 score
+    f1_val = f1_score(y_true, y_pred, average="macro")
 
-def execute_master_stream_cipher() -> str:
-    state = [
-        0x61707865, 0x3320646e, 0x79622d32, 0x6b206574,
-        0x03020100, 0x07060504, 0x0b0a0908, 0x0f0e0d0c,
-        0x13121110, 0x17161514, 0x1b1a1918, 0x1f1e1d1c,
-        0x00000001, 0x09000000, 0x4a000000, 0x00000000
-    ]
+    tp_0 = cm[0, 0]
+    # FIX 2: Sum column 0 minus TP to get False Positives for class 0
+    fp_0 = np.sum(cm[:, 0]) - tp_0
+    
+    # FIX 3: Precision denominator is TP + FP
+    prec_0 = float(tp_0 / (tp_0 + fp_0)) if (tp_0 + fp_0) > 0 else 0.0
 
-    for _ in range(5):
-        quarter_round(state, 0, 4, 8, 12)
-        quarter_round(state, 1, 5, 9, 13)
-        quarter_round(state, 2, 6, 10, 14)
-        quarter_round(state, 3, 7, 11, 15)
-        quarter_round(state, 0, 5, 10, 15)
-        quarter_round(state, 1, 6, 11, 12)
-        quarter_round(state, 2, 7, 8, 13)
-        quarter_round(state, 3, 4, 9, 14)
-
-    checksum = sum(state) & 0xFFFFFFFF
-    return f"DISARM_SEQ: CHACHA-WORD-0x{checksum:08X}"
+    return f"DISARM_SEQ: SK-METRICS-MACROF1-{f1_val:.3f}-PREC0-{prec_0:.2f}"
 
 if __name__ == "__main__":
-    print(execute_master_stream_cipher())
+    y_true = np.array([0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 2, 1])
+    y_pred = np.array([0, 1, 1, 0, 2, 2, 0, 1, 2, 1, 2, 1])
+    print(evaluate_alarm_predictions(y_true, y_pred))
 `,
-    expectedOutput: "DISARM_SEQ: CHACHA-WORD-0x072B794A",
+    expectedOutput: "DISARM_SEQ: SK-METRICS-MACROF1-0.758-PREC0-1.00",
   },
 ];
 
 /**
- * Returns exactly ONE randomly selected challenge safe for client-side transmission.
- * Supports optional excludeId to ensure consecutive challenges are distinct.
- * NEVER exposes correctCode or expectedOutput. Zero list leakage.
+ * Returns a single randomized challenge without revealing expected output or solution.
  */
 export function getRandomClientChallenge(excludeId?: string): ChallengeClient {
   const pool = excludeId ? CHALLENGES.filter((c) => c.id !== excludeId) : CHALLENGES;
   const targetPool = pool.length > 0 ? pool : CHALLENGES;
   const randomIndex = Math.floor(Math.random() * targetPool.length);
-  const { correctCode, expectedOutput, ...clientSafe } = targetPool[randomIndex];
-  return clientSafe;
+  const challenge = targetPool[randomIndex];
+  return {
+    id: challenge.id,
+    stageNumber: challenge.stageNumber,
+    title: challenge.title,
+    category: challenge.category,
+    points: challenge.points,
+    timeBonusMax: challenge.timeBonusMax,
+    description: challenge.description,
+    buggyCode: challenge.buggyCode,
+  };
 }
 
 /**
@@ -794,8 +859,16 @@ export function getRandomClientChallenge(excludeId?: string): ChallengeClient {
 export function getClientChallengeById(id: string): ChallengeClient | undefined {
   const found = CHALLENGES.find((c) => c.id === id);
   if (!found) return undefined;
-  const { correctCode, expectedOutput, ...clientSafe } = found;
-  return clientSafe;
+  return {
+    id: found.id,
+    stageNumber: found.stageNumber,
+    title: found.title,
+    category: found.category,
+    points: found.points,
+    timeBonusMax: found.timeBonusMax,
+    description: found.description,
+    buggyCode: found.buggyCode,
+  };
 }
 
 /**
